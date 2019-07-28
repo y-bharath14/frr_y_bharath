@@ -22,6 +22,7 @@
 #ifndef _ZEBRA_INTERFACE_H
 #define _ZEBRA_INTERFACE_H
 
+#include "typesafe.h"
 #include "redistribute.h"
 #include "vrf.h"
 #include "hook.h"
@@ -47,6 +48,9 @@ extern "C" {
 #define IF_VLAN_BITMAP_MAX 4096
 
 #if defined(HAVE_RTADV)
+
+PREDECL_SORTLIST_UNIQ(pref64_advs);
+
 /* Router advertisement parameter.  From RFC4861, RFC6275 and RFC4191. */
 struct rtadvconf {
 	/* A flag indicating whether or not the router sends periodic Router
@@ -206,6 +210,9 @@ struct rtadvconf {
 	 * turn that capability off to meet the rfc if needed.
 	 */
 	bool UseFastRexmit; /* True if fast rexmits are enabled */
+
+	/* NAT64 prefix advertisements [RFC8781] */
+	struct pref64_advs_head pref64_advs;
 
 	uint8_t inFastRexmit; /* True if we're rexmits faster than usual */
 

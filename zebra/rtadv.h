@@ -110,6 +110,9 @@ struct nd_opt_homeagent_info { /* Home Agent info */
 #ifndef ND_OPT_DNSSL
 #define ND_OPT_DNSSL 31
 #endif
+#ifndef ND_OPT_PREF64
+#define ND_OPT_PREF64 38
+#endif
 
 #ifndef HAVE_STRUCT_ND_OPT_RDNSS
 struct nd_opt_rdnss { /* Recursive DNS server option [RFC8106 5.1] */
@@ -134,6 +137,26 @@ struct nd_opt_dnssl { /* DNS search list option [RFC8106 5.2] */
 	 */
 } __attribute__((__packed__));
 #endif
+
+/* not in a system header (yet?)
+ * => added "__frr" to avoid future conflicts
+ */
+struct nd_opt_pref64__frr {
+	uint8_t nd_opt_pref64_type;
+	uint8_t nd_opt_pref64_len;
+	uint16_t nd_opt_pref64_lifetime_plc;
+	uint8_t nd_opt_pref64_prefix[12]; /* highest 96 bits only */
+} __attribute__((__packed__));
+
+
+#define PREF64_LIFETIME_AUTO UINT32_MAX
+
+struct pref64_adv {
+	struct pref64_advs_item itm;
+
+	struct prefix_ipv6 p;
+	uint32_t lifetime;
+};
 
 #endif /* HAVE_RTADV */
 
