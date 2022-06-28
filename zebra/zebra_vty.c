@@ -1472,8 +1472,8 @@ static void if_nexthop_group_dump_vty(struct vty *vty, struct interface *ifp)
 	if (!if_nhg_dependents_is_empty(ifp)) {
 		vty_out(vty, "Interface %s:\n", ifp->name);
 
-		frr_each(nhg_connected_tree, &zebra_if->nhg_dependents,
-			 rb_node_dep) {
+		frr_each (nhg_connected_tree, &zebra_if->nhg_dependents,
+			  rb_node_dep) {
 			vty_out(vty, "   ");
 			show_nexthop_group_out(vty, rb_node_dep->nhe, NULL);
 		}
