@@ -773,7 +773,7 @@ void lsp_print_json(struct isis_lsp *lsp, struct json_object *json,
 	own_json = json_object_new_object();
 	json_object_object_add(json, "lsp", own_json);
 	json_object_string_add(own_json, "id", LSPid);
-	json_object_string_add(own_json, "own", lsp->own_lsp ? "*" : " ");
+	json_object_boolean_add(own_json, "own", lsp->own_lsp ? true : false);
 	json_object_int_add(json, "pdu-len", lsp->hdr.pdu_len);
 	snprintfrr(buf, sizeof(buf), "0x%08x", lsp->hdr.seqno);
 	json_object_string_add(json, "seq-number", buf);
