@@ -1934,6 +1934,90 @@ static int unpack_item_flex_algo_prefix_metric(uint16_t mtid, uint8_t len,
 	return 0;
 }
 
+
+static struct isis_item *copy_item_prefix_attr_flags(struct isis_item *i)
+{
+	struct isis_prefix_attr_flags *paf = (struct isis_prefix_attr_flags *)i;
+	struct isis_prefix_attr_flags *rv =
+		XCALLOC(MTYPE_ISIS_SUBTLV, sizeof(*rv));
+
+	rv->flags = paf->flags;
+	return (struct isis_item *)rv;
+}
+
+static void format_item_prefix_attr_flags(uint16_t mtid, struct isis_item *i,
+					  struct sbuf *buf,
+					  struct json_object *json, int indent)
+{
+	struct isis_prefix_attr_flags *paf = (struct isis_prefix_attr_flags *)i;
+
+	if (json)
+		/* no JSON support */
+		return;
+
+	sbuf_push(buf, indent, "Prefix attribute flags: 0x%x", paf->flags);
+	if (CHECK_FLAG(paf->flags, ISIS_PREFIX_ATTR_FLAG_X))
+		sbuf_push(buf, 1, "External (X): %d",
+			  CHECK_FLAG(paf->flags, ISIS_PREFIX_ATTR_FLAG_X) ? 1
+									  : 0);
+	if (CHECK_FLAG(paf->flags, ISIS_PREFIX_ATTR_FLAG_R))
+		sbuf_push(buf, 1, "Re-advertisement (R): %d",
+			  CHECK_FLAG(paf->flags, ISIS_PREFIX_ATTR_FLAG_R) ? 1
+									  : 0);
+	if (CHECK_FLAG(paf->flags, ISIS_PREFIX_ATTR_FLAG_N))
+		sbuf_push(buf, 1, "Node (N): %d",
+			  CHECK_FLAG(paf->flags, ISIS_PREFIX_ATTR_FLAG_N) ? 1
+									  : 0);
+	sbuf_push(buf, 0, "\n");
+}
+
+static void free_item_prefix_attr_flags(struct isis_item *i)
+{
+	XFREE(MTYPE_ISIS_SUBTLV, i);
+}
+
+static int pack_item_prefix_attr_flags(struct isis_item *i, struct stream *s,
+				       size_t *min_len)
+{
+	struct isis_prefix_attr_flags *paf = (struct isis_prefix_attr_flags *)i;
+	uint8_t size = ISIS_SUBTLV_PREFIX_ATTR_FLAGS_SIZE;
+
+	if (STREAM_WRITEABLE(s) < size) {
+		*min_len = size;
+		return 1;
+	}
+
+	stream_putc(s, paf->flags);
+
+	return 0;
+}
+
+static int unpack_item_prefix_attr_flags(uint16_t mtid, uint8_t len,
+					 struct stream *s, struct sbuf *log,
+					 void *dest, int indent)
+{
+	struct isis_subtlvs *subtlvs = dest;
+	struct isis_prefix_attr_flags paf = {};
+
+	sbuf_push(log, indent, "Unpacking Prefix attribute flags...\n");
+
+	if (len < ISIS_SUBTLV_PREFIX_ATTR_FLAGS_SIZE) {
+		sbuf_push(
+			log, indent,
+			"Not enough data left. (expected %d byte, got %hhu)\n",
+			ISIS_SUBTLV_PREFIX_ATTR_FLAGS_SIZE, len);
+		return 1;
+	}
+
+	paf.flags = stream_getc(s);
+
+	format_item_prefix_attr_flags(mtid, (struct isis_item *)&paf, log, NULL,
+				      indent + 2);
+	append_item(&subtlvs->prefix_attr_flags,
+		    copy_item_prefix_attr_flags((struct isis_item *)&paf));
+	return 0;
+}
+
 /* Functions for Sub-TVL ??? IPv6 Source Prefix */
 
 static struct prefix_ipv6 *copy_subtlv_ipv6_source_prefix(struct prefix_ipv6 *p)
@@ -2063,6 +2147,8 @@ static struct isis_subtlvs *isis_alloc_subtlvs(enum isis_tlv_context context)
 
 	init_item_list(&result->prefix_sids);
 
+	init_item_list(&result->prefix_attr_flags);
+
 	init_item_list(&result->flex_algo_prefix_metrics);
 
 	return result;
@@ -2080,6 +2166,9 @@ static struct isis_subtlvs *copy_subtlvs(struct isis_subtlvs *subtlvs)
 	copy_items(subtlvs->context, ISIS_SUBTLV_PREFIX_SID,
 		   &subtlvs->prefix_sids, &rv->prefix_sids);
 
+	copy_items(subtlvs->context, ISIS_SUBTLV_PREFIX_ATTR_FLAGS,
+		   &subtlvs->prefix_attr_flags, &rv->prefix_attr_flags);
+
 	copy_items(subtlvs->context, ISIS_SUBTLV_FAPM,
 		   &subtlvs->flex_algo_prefix_metrics,
 		   &rv->flex_algo_prefix_metrics);
@@ -2095,6 +2184,9 @@ static void format_subtlvs(struct isis_subtlvs *subtlvs, struct sbuf *buf,
 	format_items(subtlvs->context, ISIS_SUBTLV_PREFIX_SID,
 		     &subtlvs->prefix_sids, buf, json, indent);
 
+	format_items(subtlvs->context, ISIS_SUBTLV_PREFIX_ATTR_FLAGS,
+		     &subtlvs->prefix_attr_flags, buf, json, indent);
+
 	format_items(subtlvs->context, ISIS_SUBTLV_FAPM,
 		     &subtlvs->flex_algo_prefix_metrics, buf, json, indent);
 
@@ -2108,6 +2200,9 @@ static void isis_free_subtlvs(struct isis_subtlvs *subtlvs)
 
 	free_items(subtlvs->context, ISIS_SUBTLV_PREFIX_SID,
 		   &subtlvs->prefix_sids);
+
+	free_items(subtlvs->context, ISIS_SUBTLV_PREFIX_ATTR_FLAGS,
+		   &subtlvs->prefix_attr_flags);
 
 	free_items(subtlvs->context, ISIS_SUBTLV_FAPM,
 		   &subtlvs->flex_algo_prefix_metrics);
@@ -2129,6 +2224,11 @@ static int pack_subtlvs(struct isis_subtlvs *subtlvs, struct stream *s)
 
 	rv = pack_items(subtlvs->context, ISIS_SUBTLV_PREFIX_SID,
 			&subtlvs->prefix_sids, s, NULL, NULL, NULL, NULL);
+	if (rv)
+		return rv;
+
+	rv = pack_items(subtlvs->context, ISIS_SUBTLV_PREFIX_ATTR_FLAGS,
+			&subtlvs->prefix_attr_flags, s, NULL, NULL, NULL, NULL);
 	if (rv)
 		return rv;
 
@@ -6114,6 +6214,7 @@ ITEM_TLV_OPS(ipv6_reach, "TLV 236 IPv6 Reachability");
 TLV_OPS(router_cap, "TLV 242 Router Capability");
 
 ITEM_SUBTLV_OPS(prefix_sid, "Sub-TLV 3 SR Prefix-SID");
+ITEM_SUBTLV_OPS(prefix_attr_flags, "Sub-TLV 4 Prefix Attribute Flags");
 ITEM_SUBTLV_OPS(flex_algo_prefix_metric, "Sub-TLV 6 Flex-Algo Prefix Metric");
 SUBTLV_OPS(ipv6_source_prefix, "Sub-TLV 22 IPv6 Source Prefix");
 
@@ -6148,10 +6249,12 @@ static const struct tlv_ops *const tlv_table[ISIS_CONTEXT_MAX][ISIS_TLV_MAX] = {
 	[ISIS_CONTEXT_SUBTLV_NE_REACH] = {},
 	[ISIS_CONTEXT_SUBTLV_IP_REACH] = {
 		[ISIS_SUBTLV_PREFIX_SID] = &tlv_prefix_sid_ops,
+		[ISIS_SUBTLV_PREFIX_ATTR_FLAGS] = &tlv_prefix_attr_flags_ops,
 		[ISIS_SUBTLV_FAPM] = &tlv_flex_algo_prefix_metric_ops,
 	},
 	[ISIS_CONTEXT_SUBTLV_IPV6_REACH] = {
 		[ISIS_SUBTLV_PREFIX_SID] = &tlv_prefix_sid_ops,
+		[ISIS_SUBTLV_PREFIX_ATTR_FLAGS] = &tlv_prefix_attr_flags_ops,
 		[ISIS_SUBTLV_IPV6_SOURCE_PREFIX] = &subtlv_ipv6_source_prefix_ops,
 		[ISIS_SUBTLV_FAPM] = &tlv_flex_algo_prefix_metric_ops,
 	}
