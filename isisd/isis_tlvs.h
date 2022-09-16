@@ -761,4 +761,9 @@ isis_tlvs_lookup_mt_router_info(struct isis_tlvs *tlvs, uint16_t mtid);
 void isis_tlvs_set_purge_originator(struct isis_tlvs *tlvs,
 				    const uint8_t *generator,
 				    const uint8_t *sender);
+
+#ifndef FABRICD
+bool isis_is_prefix_attr_redist_ext(struct isis_subtlvs *subtlvs, int algo);
+#endif /* ifndef FABRICD */
+
 #endif

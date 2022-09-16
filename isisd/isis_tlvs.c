@@ -7207,3 +7207,35 @@ void isis_tlvs_set_purge_originator(struct isis_tlvs *tlvs,
 		       sizeof(tlvs->purge_originator->sender));
 	}
 }
+
+#ifndef FABRICD
+bool isis_is_prefix_attr_redist_ext(struct isis_subtlvs *subtlvs, int algo)
+{
+	struct isis_prefix_attr_flags *paf;
+	struct isis_prefix_sid *psid;
+
+	if (!subtlvs)
+		return false;
+
+	for (psid = (struct isis_prefix_sid *)subtlvs->prefix_sids.head; psid;
+	     psid = psid->next) {
+		if (psid->algorithm != algo)
+			continue;
+
+		if (CHECK_FLAG(psid->flags, ISIS_PREFIX_SID_READVERTISED))
+			return true;
+	}
+
+	paf = (struct isis_prefix_attr_flags *)subtlvs->prefix_attr_flags.head;
+
+	if (paf) {
+		if (CHECK_FLAG(paf->flags, ISIS_PREFIX_ATTR_FLAG_X))
+			return true;
+
+		if (CHECK_FLAG(paf->flags, ISIS_PREFIX_ATTR_FLAG_R))
+			return true;
+	}
+
+	return false;
+}
+#endif /* ifndef FABRICD */
