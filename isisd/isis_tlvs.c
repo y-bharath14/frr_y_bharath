@@ -6871,6 +6871,26 @@ void isis_tlvs_free_asla(struct isis_ext_subtlvs *ext, uint8_t standard_apps)
 	}
 }
 
+static void isis_tlvs_add_flex_algo_prefix_metric(struct isis_subtlvs *subtlvs,
+						  struct sr_prefix_cfg **pcfgs,
+						  uint32_t metric)
+{
+	struct isis_flex_algo_prefix_metric *fapm;
+	int i;
+
+	for (i = 0; i < SR_ALGORITHM_COUNT; i++) {
+		if (!pcfgs[i])
+			continue;
+		if (!flex_algo_id_valid(i))
+			continue;
+		fapm = XCALLOC(MTYPE_ISIS_SUBTLV, sizeof(*fapm));
+		fapm->algorithm = i;
+		fapm->metric = metric;
+		append_item(&subtlvs->flex_algo_prefix_metrics,
+			    (struct isis_item *)fapm);
+	}
+}
+
 void isis_tlvs_add_extended_ip_reach(struct isis_tlvs *tlvs,
 				     struct prefix_ipv4 *dest, uint32_t metric,
 				     bool external,
@@ -6896,6 +6916,10 @@ void isis_tlvs_add_extended_ip_reach(struct isis_tlvs *tlvs,
 			append_item(&r->subtlvs->prefix_sids,
 				    (struct isis_item *)psid);
 		}
+
+		if (external)
+			isis_tlvs_add_flex_algo_prefix_metric(r->subtlvs, pcfgs,
+							      metric);
 	}
 
 	append_item(&tlvs->extended_ip_reach, (struct isis_item *)r);
@@ -6924,6 +6948,10 @@ void isis_tlvs_add_ipv6_reach(struct isis_tlvs *tlvs, uint16_t mtid,
 			append_item(&r->subtlvs->prefix_sids,
 				    (struct isis_item *)psid);
 		}
+
+		if (external)
+			isis_tlvs_add_flex_algo_prefix_metric(r->subtlvs, pcfgs,
+							      metric);
 	}
 
 	struct isis_item_list *l;
