@@ -6994,12 +6994,27 @@ static void isis_tlvs_add_flex_algo_prefix_metric(struct isis_subtlvs *subtlvs,
 	}
 }
 
+
+static void isis_tlvs_add_prefix_attr_flags(struct isis_subtlvs *subtlvs,
+					    bool node, bool external)
+{
+	struct isis_prefix_attr_flags *paf;
+
+	paf = XCALLOC(MTYPE_ISIS_SUBTLV, sizeof(*paf));
+	if (node)
+		SET_FLAG(paf->flags, ISIS_PREFIX_ATTR_FLAG_N);
+	if (external)
+		SET_FLAG(paf->flags, ISIS_PREFIX_ATTR_FLAG_X);
+	append_item(&subtlvs->prefix_attr_flags, (struct isis_item *)paf);
+}
+
 void isis_tlvs_add_extended_ip_reach(struct isis_tlvs *tlvs,
 				     struct prefix_ipv4 *dest, uint32_t metric,
 				     bool external,
 				     struct sr_prefix_cfg **pcfgs)
 {
 	struct isis_extended_ip_reach *r = XCALLOC(MTYPE_ISIS_TLV, sizeof(*r));
+	bool node = false;
 
 	r->metric = metric;
 	memcpy(&r->prefix, dest, sizeof(*dest));
@@ -7018,7 +7033,14 @@ void isis_tlvs_add_extended_ip_reach(struct isis_tlvs *tlvs,
 			isis_sr_prefix_cfg2subtlv(pcfg, external, psid);
 			append_item(&r->subtlvs->prefix_sids,
 				    (struct isis_item *)psid);
+
+			if (!node && pcfg->node_sid)
+				node = true;
 		}
+
+		if (node || external)
+			isis_tlvs_add_prefix_attr_flags(r->subtlvs, node,
+							external);
 
 		if (external)
 			isis_tlvs_add_flex_algo_prefix_metric(r->subtlvs, pcfgs,
@@ -7033,6 +7055,7 @@ void isis_tlvs_add_ipv6_reach(struct isis_tlvs *tlvs, uint16_t mtid,
 			      bool external, struct sr_prefix_cfg **pcfgs)
 {
 	struct isis_ipv6_reach *r = XCALLOC(MTYPE_ISIS_TLV, sizeof(*r));
+	bool node = false;
 
 	r->metric = metric;
 	memcpy(&r->prefix, dest, sizeof(*dest));
@@ -7050,7 +7073,14 @@ void isis_tlvs_add_ipv6_reach(struct isis_tlvs *tlvs, uint16_t mtid,
 			isis_sr_prefix_cfg2subtlv(pcfg, external, psid);
 			append_item(&r->subtlvs->prefix_sids,
 				    (struct isis_item *)psid);
+
+			if (!node && pcfg->node_sid)
+				node = true;
 		}
+
+		if (node || external)
+			isis_tlvs_add_prefix_attr_flags(r->subtlvs, node,
+							external);
 
 		if (external)
 			isis_tlvs_add_flex_algo_prefix_metric(r->subtlvs, pcfgs,
