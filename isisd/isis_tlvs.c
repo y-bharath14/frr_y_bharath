@@ -4627,7 +4627,7 @@ static void format_tlvs(struct isis_tlvs *tlvs, struct sbuf *buf, struct json_ob
 
 	if (tlvs->mt_router_info_empty) {
 		if (json)
-			json_object_string_add(json, "mtRouterInfo", "none");
+			json_object_object_add(json, "mtRouterInfo", NULL);
 		else
 			sbuf_push(buf, indent, "MT Router Info: None\n");
 	} else {
