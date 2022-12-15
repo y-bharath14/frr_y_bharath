@@ -774,9 +774,9 @@ void lsp_print_json(struct isis_lsp *lsp, struct json_object *json,
 	json_object_object_add(json, "lsp", own_json);
 	json_object_string_add(own_json, "id", LSPid);
 	json_object_boolean_add(own_json, "own", lsp->own_lsp ? true : false);
-	json_object_int_add(json, "pdu-len", lsp->hdr.pdu_len);
+	json_object_int_add(json, "pduLen", lsp->hdr.pdu_len);
 	snprintfrr(buf, sizeof(buf), "0x%08x", lsp->hdr.seqno);
-	json_object_string_add(json, "seq-number", buf);
+	json_object_string_add(json, "seqNumber", buf);
 	snprintfrr(buf, sizeof(buf), "0x%04hx", lsp->hdr.checksum);
 	json_object_string_add(json, "chksum", buf);
 	if (lsp->hdr.rem_lifetime == 0) {
@@ -787,7 +787,7 @@ void lsp_print_json(struct isis_lsp *lsp, struct json_object *json,
 		json_object_int_add(json, "holdtime", lsp->hdr.rem_lifetime);
 	}
 	json_object_string_add(
-		json, "att-p-ol", lsp_bits2string(lsp->hdr.lsp_bits, b, sizeof(b)));
+		json, "attPOl", lsp_bits2string(lsp->hdr.lsp_bits, b, sizeof(b)));
 }
 
 void lsp_print_vty(struct isis_lsp *lsp, struct vty *vty,
