@@ -9907,7 +9907,6 @@ DEFPY(no_ospf_gr_helper_enable,
 							OSPF_GR_FALSE);
 		return CMD_SUCCESS;
 	}
-
 	ospf_gr_helper_support_set(ospf, OSPF_GR_FALSE);
 	return CMD_SUCCESS;
 }
@@ -9983,21 +9982,28 @@ DEFPY(ospf_gr_helper_planned_only,
 }
 
 /* External Route Aggregation */
-DEFUN (ospf_external_route_aggregation,
-       ospf_external_route_aggregation_cmd,
-       "summary-address A.B.C.D/M [tag (1-4294967295)]",
-       "External summary address\n"
-       "Summary address prefix\n"
-       "Router tag \n"
-       "Router tag value\n")
+DEFPY(ospf_external_route_aggregation,
+      ospf_external_route_aggregation_cmd,
+      "[no] summary-address A.B.C.D/M$prefix [{tag (1-4294967295)$tag_val | metric (0-16777215)$m_val | metric-type (1-2)$m_type}]",
+      NO_STR
+      "External summary address\n"
+      "Summary address prefix (a.b.c.d/m)\n"
+      "Router tag\n"
+      "Router tag value\n"
+      "Metric\n"
+      "Advertised metric for this route\n"
+      "OSPF exterior metric type for summarised routes\n"
+      "Set OSPF External Type 1/2 metrics\n")
 {
 	VTY_DECLVAR_INSTANCE_CONTEXT(ospf, ospf);
 	struct prefix_ipv4 p;
-	int idx = 1;
-	route_tag_t tag = 0;
 	int ret = OSPF_SUCCESS;
 
-	str2prefix_ipv4(argv[idx]->arg, &p);
+	str2prefix_ipv4(prefix_str, &p);
+	if (!ret) {
+		vty_out(vty, "%% Malformed prefix\n");
+		return CMD_WARNING_CONFIG_FAILED;
+	}
 
 	if (is_default_prefix4(&p)) {
 		vty_out(vty,
@@ -10006,58 +10012,28 @@ DEFUN (ospf_external_route_aggregation,
 	}
 
 	/* Apply mask for given prefix. */
-	apply_mask(&p);
+	apply_mask((struct prefix *)&p);
 
 	if (!is_valid_summary_addr(&p)) {
 		vty_out(vty, "Not a valid summary address.\n");
 		return CMD_WARNING_CONFIG_FAILED;
 	}
 
-	if (argc > 2)
-		tag = strtoul(argv[idx + 2]->arg, NULL, 10);
+	if (!m_val_str)
+		m_val = -1;
 
-	ret = ospf_asbr_external_aggregator_set(ospf, &p, tag);
-	if (ret == OSPF_INVALID)
-		vty_out(vty, "Invalid configuration!!\n");
+	if (m_type == 1)
+		m_type = EXTERNAL_METRIC_TYPE_1;
+	else if (m_type == 2)
+		m_type = EXTERNAL_METRIC_TYPE_2;
+	else
+		m_type = DEFAULT_METRIC_TYPE;
 
-	return CMD_SUCCESS;
-}
-
-DEFUN (no_ospf_external_route_aggregation,
-       no_ospf_external_route_aggregation_cmd,
-       "no summary-address A.B.C.D/M [tag (1-4294967295)]",
-       NO_STR
-       "External summary address\n"
-       "Summary address prefix\n"
-       "Router tag\n"
-       "Router tag value\n")
-{
-	VTY_DECLVAR_INSTANCE_CONTEXT(ospf, ospf);
-	struct prefix_ipv4 p;
-	int idx = 2;
-	route_tag_t tag = 0;
-	int ret = OSPF_SUCCESS;
-
-	str2prefix_ipv4(argv[idx]->arg, &p);
-
-	if (is_default_prefix4(&p)) {
-		vty_out(vty,
-			"Default address shouldn't be configured as summary address.\n");
-		return CMD_SUCCESS;
-	}
-
-	/* Apply mask for given prefix. */
-	apply_mask(&p);
-
-	if (!is_valid_summary_addr(&p)) {
-		vty_out(vty, "Not a valid summary address.\n");
-		return CMD_WARNING_CONFIG_FAILED;
-	}
-
-	if (argc > 3)
-		tag = strtoul(argv[idx + 2]->arg, NULL, 10);
-
-	ret = ospf_asbr_external_aggregator_unset(ospf, &p, tag);
+	if (no)
+		ret = ospf_asbr_external_aggregator_unset(ospf, &p);
+	else
+		ret = ospf_asbr_external_aggregator_set(ospf, &p, tag_val,
+							m_val, m_type);
 	if (ret == OSPF_INVALID)
 		vty_out(vty, "Invalid configuration!!\n");
 
@@ -11632,12 +11608,10 @@ static int ospf_show_summary_address(struct vty *vty, struct ospf *ospf,
 {
 	struct route_node *rn;
 	json_object *json_vrf = NULL;
-	int mtype = 0;
 	int mval = 0;
 	static char header[] =
 		"Summary-address     Metric-type     Metric     Tag         External_Rt_count\n";
 
-	mtype = metric_type(ospf, 0, ospf->instance);
 	mval = metric_value(ospf, 0, ospf->instance);
 
 	if (!uj)
@@ -11692,20 +11666,27 @@ static int ospf_show_summary_address(struct vty *vty, struct ospf *ospf,
 
 				json_object_string_add(
 					json_aggr, "Metric-type",
-					(mtype == EXTERNAL_METRIC_TYPE_1)
-						? "E1"
-						: "E2");
+					(aggr->mtype == DEFAULT_METRIC_TYPE)
+						? "E2"
+						: "E1");
+
 				json_object_string_add(
 					json_aggr, "metricType",
-					(mtype == EXTERNAL_METRIC_TYPE_1)
-						? "E1"
-						: "E2");
+					(aggr->mtype == DEFAULT_METRIC_TYPE)
+						? "E2"
+						: "E1");
 
 #if CONFDATE > 20230131
 CPP_NOTICE("Remove JSON object commands with keys starting with capital")
 #endif
-				json_object_int_add(json_aggr, "Metric", mval);
-				json_object_int_add(json_aggr, "metric", mval);
+				json_object_int_add(json_aggr, "Metric",
+						    (aggr->metric != -1)
+							    ? aggr->metric
+							    : mval);
+				json_object_int_add(json_aggr, "metric",
+						    (aggr->metric != -1)
+							   ? aggr->metric
+							   : mval);
 
 				json_object_int_add(json_aggr, "Tag",
 						    aggr->tag);
@@ -11729,10 +11710,13 @@ CPP_NOTICE("Remove JSON object commands with keys starting with capital")
 			} else {
 				vty_out(vty, "%-20s", buf);
 
-				(mtype == EXTERNAL_METRIC_TYPE_1)
-					? vty_out(vty, "%-16s", "E1")
-					: vty_out(vty, "%-16s", "E2");
-				vty_out(vty, "%-11d", mval);
+				(aggr->mtype == DEFAULT_METRIC_TYPE)
+					? vty_out(vty, "%-16s", "E2")
+					: vty_out(vty, "%-16s", "E1");
+
+				vty_out(vty, "%-11d",
+					(aggr->metric != -1) ? aggr->metric
+							     : mval);
 
 				vty_out(vty, "%-12u", aggr->tag);
 
@@ -12459,6 +12443,12 @@ static int config_write_ospf_external_aggregator(struct vty *vty,
 			if (aggr->tag)
 				vty_out(vty, " tag %u", aggr->tag);
 
+			if (aggr->metric != -1)
+				vty_out(vty, " metric %d", aggr->metric);
+
+			if (aggr->mtype != DEFAULT_METRIC_TYPE)
+				vty_out(vty, " metric-type 1");
+
 			if (CHECK_FLAG(aggr->flags,
 				       OSPF_EXTERNAL_AGGRT_NO_ADVERTISE))
 				vty_out(vty, " no-advertise");
@@ -12902,7 +12892,6 @@ static void ospf_vty_zebra_init(void)
 
 	/* External LSA summarisation config commands.*/
 	install_element(OSPF_NODE, &ospf_external_route_aggregation_cmd);
-	install_element(OSPF_NODE, &no_ospf_external_route_aggregation_cmd);
 	install_element(OSPF_NODE,
 			&ospf_external_route_aggregation_no_adrvertise_cmd);
 	install_element(OSPF_NODE,

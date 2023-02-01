@@ -415,6 +415,8 @@ ospf_external_aggregator_new(struct prefix_ipv4 *p)
 	aggr->p.family = p->family;
 	aggr->p.prefix = p->prefix;
 	aggr->p.prefixlen = p->prefixlen;
+	aggr->metric = -1;
+	aggr->mtype = DEFAULT_METRIC_TYPE;
 	aggr->match_extnl_hash = hash_create(ospf_external_rt_hash_key,
 					     ospf_external_rt_hash_cmp,
 					     "Ospf external route hash");
@@ -608,6 +610,8 @@ struct ospf_lsa *ospf_originate_summary_lsa(struct ospf *ospf,
 	struct as_external_lsa *asel;
 	struct ospf_external_aggr_rt *old_aggr;
 	route_tag_t tag = 0;
+	unsigned int metric = 0;
+	int mtype = 0;
 
 	if (IS_DEBUG_OSPF(lsa, EXTNL_LSA_AGGR))
 		zlog_debug("%s: Prepare to originate Summary route(%pI4/%d)",
@@ -653,8 +657,8 @@ struct ospf_lsa *ospf_originate_summary_lsa(struct ospf *ospf,
 	ei_aggr.tag = aggr->tag;
 	ei_aggr.type = 0;
 	ei_aggr.instance = ospf->instance;
-	ei_aggr.route_map_set.metric = -1;
-	ei_aggr.route_map_set.metric_type = -1;
+	ei_aggr.route_map_set.metric = aggr->metric;
+	ei_aggr.route_map_set.metric_type = aggr->mtype;
 
 	/* Summary route already originated,
 	 * So, Do nothing.
@@ -669,16 +673,24 @@ struct ospf_lsa *ospf_originate_summary_lsa(struct ospf *ospf,
 
 		asel = (struct as_external_lsa *)lsa->data;
 		tag = (unsigned long)ntohl(asel->e[0].route_tag);
+		metric = (unsigned int)ntohl(GET_METRIC(asel->e[0].metric));
+		mtype = (IS_EXTERNAL_METRIC(asel->e[0].tos))
+				? EXTERNAL_METRIC_TYPE_2
+				: EXTERNAL_METRIC_TYPE_1;
 
-		/* If tag modified , then re-originate the route
-		 * with modified tag details.
+		/* If tag/metric/metric-type modified, then re-originate
+		 * the route with modified tag/metric/metric-type details.
 		 */
-		if (tag != ei_aggr.tag) {
+		if ((tag != aggr->tag) ||
+		    (metric != (unsigned int)aggr->metric) ||
+		    (mtype != aggr->mtype)) {
 			if (IS_DEBUG_OSPF(lsa, EXTNL_LSA_AGGR))
 				zlog_debug(
-					"%s: Route tag changed(old:%d new:%d,So refresh the summary route.(%pI4/%d)",
-					__func__, tag, ei_aggr.tag,
-					&aggr->p.prefix, aggr->p.prefixlen);
+					"%s: Route tag changed(old:%d new:%d) Metric(old:%u,new:%u), mtype(o:%d n:%d), so refresh the summary route.(%pI4/%d)",
+					__func__, tag, aggr->tag, metric,
+					(unsigned int)aggr->metric, mtype,
+					aggr->mtype, &aggr->p.prefix,
+					aggr->p.prefixlen);
 
 			ospf_external_lsa_refresh(ospf, lsa, &ei_aggr,
 						  LSA_REFRESH_FORCE, 1);
@@ -978,6 +990,8 @@ ospf_aggr_handle_advertise_change(struct ospf *ospf,
 static void ospf_handle_external_aggr_update(struct ospf *ospf)
 {
 	struct route_node *rn = NULL;
+	unsigned int metric = 0;
+	int mtype = 0;
 
 	if (IS_DEBUG_OSPF(lsa, EXTNL_LSA_AGGR))
 		zlog_debug("%s: Process modified aggregators.", __func__);
@@ -1016,8 +1030,8 @@ static void ospf_handle_external_aggr_update(struct ospf *ospf)
 			ei_aggr.tag = aggr->tag;
 			ei_aggr.type = 0;
 			ei_aggr.instance = ospf->instance;
-			ei_aggr.route_map_set.metric = -1;
-			ei_aggr.route_map_set.metric_type = -1;
+			ei_aggr.route_map_set.metric = aggr->metric;
+			ei_aggr.route_map_set.metric_type = aggr->mtype;
 
 			/* Check if tag modified */
 			if (CHECK_FLAG(aggr->flags,
@@ -1035,16 +1049,27 @@ static void ospf_handle_external_aggr_update(struct ospf *ospf)
 				asel = (struct as_external_lsa *)lsa->data;
 				tag = (unsigned long)ntohl(
 					asel->e[0].route_tag);
+				metric = (unsigned int)ntohl(
+					GET_METRIC(asel->e[0].metric));
+				mtype = (IS_EXTERNAL_METRIC(asel->e[0].tos))
+						? EXTERNAL_METRIC_TYPE_2
+						: EXTERNAL_METRIC_TYPE_1;
 
-				/* If tag modified , then re-originate the
-				 * route with modified tag details.
+
+				/* If tag/metric modified , then re-originate
+				 * the route with modified tag/metric details.
 				 */
-				if (tag != ei_aggr.tag) {
+				if ((tag != aggr->tag) ||
+				    (metric != (unsigned int)aggr->metric) ||
+				    (mtype != aggr->mtype)) {
 					if (IS_DEBUG_OSPF(lsa, EXTNL_LSA_AGGR))
 						zlog_debug(
-							"%s: Route tag changed(old:%d new:%d,So refresh the summary route.(%pI4/%d)",
+							"%s: Route tag(old:%d new:%d)/metric(old:%u new:%d) mtype(o:%d n:%d) changed, so refresh the summary route.(%pI4/%d)",
 							__func__, tag,
-							ei_aggr.tag,
+							aggr->tag, metric,
+							(unsigned int)
+								aggr->metric,
+							mtype, aggr->mtype,
 							&aggr->p.prefix,
 							aggr->p.prefixlen);
 
@@ -1120,7 +1145,7 @@ static void ospf_external_aggr_timer(struct ospf *ospf,
 }
 
 int ospf_asbr_external_aggregator_set(struct ospf *ospf, struct prefix_ipv4 *p,
-				      route_tag_t tag)
+				      route_tag_t tag, int metric, int mtype)
 {
 	struct ospf_external_aggr_rt *aggregator;
 
@@ -1131,10 +1156,14 @@ int ospf_asbr_external_aggregator_set(struct ospf *ospf, struct prefix_ipv4 *p,
 			       OSPF_EXTERNAL_AGGRT_NO_ADVERTISE))
 			UNSET_FLAG(aggregator->flags,
 				   OSPF_EXTERNAL_AGGRT_NO_ADVERTISE);
-		else if (aggregator->tag == tag)
+		else if ((aggregator->tag == tag)
+			 && (aggregator->metric == metric)
+			 && (aggregator->mtype == mtype))
 			return OSPF_SUCCESS;
 
 		aggregator->tag = tag;
+		aggregator->metric = metric;
+		aggregator->mtype = mtype;
 
 		ospf_external_aggr_timer(ospf, aggregator,
 					 OSPF_ROUTE_AGGR_MODIFY);
@@ -1144,6 +1173,8 @@ int ospf_asbr_external_aggregator_set(struct ospf *ospf, struct prefix_ipv4 *p,
 			return OSPF_FAILURE;
 
 		aggregator->tag = tag;
+		aggregator->metric = metric;
+		aggregator->mtype = mtype;
 
 		ospf_external_aggr_add(ospf, aggregator);
 		ospf_external_aggr_timer(ospf, aggregator, OSPF_ROUTE_AGGR_ADD);
@@ -1153,7 +1184,7 @@ int ospf_asbr_external_aggregator_set(struct ospf *ospf, struct prefix_ipv4 *p,
 }
 
 int ospf_asbr_external_aggregator_unset(struct ospf *ospf,
-					struct prefix_ipv4 *p, route_tag_t tag)
+					struct prefix_ipv4 *p)
 {
 	struct route_node *rn;
 	struct ospf_external_aggr_rt *aggr;
@@ -1164,9 +1195,6 @@ int ospf_asbr_external_aggregator_unset(struct ospf *ospf,
 	route_unlock_node(rn);
 
 	aggr = rn->info;
-
-	if (tag && (tag != aggr->tag))
-		return OSPF_INVALID;
 
 	if (!OSPF_EXTERNAL_RT_COUNT(aggr)) {
 		ospf_external_aggr_delete(ospf, rn);

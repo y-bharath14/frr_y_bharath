@@ -1024,11 +1024,12 @@ External Route Summarisation
 This feature summarises originated external LSAs(Type-5 and Type-7).
 Summary Route will be originated on-behalf of all matched external LSAs.
 
-.. clicmd:: summary-address A.B.C.D/M [tag (1-4294967295)]
+.. clicmd:: summary-address A.B.C.D/M [{tag (1-4294967295) | metric (0-16777215) | metric-type (1-2)}]
 
    This command enable/disables summarisation for the configured address
-   range. Tag is the optional parameter. If tag configured Summary route
-   will be originated with the configured tag.
+   range. Tag, metric and metric-type are the optional parameters.
+   If tag/metric/metric-type configured summary route will be originated
+   with the configured tag/metric/metric-type.
 
 .. clicmd:: summary-address A.B.C.D/M no-advertise
 
