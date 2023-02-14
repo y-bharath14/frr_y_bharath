@@ -249,16 +249,16 @@ static void format_item_ext_subtlvs(struct isis_ext_subtlvs *exts,
 		if (json) {
 			snprintfrr(aux_buf, sizeof(aux_buf), "0x%x",
 				   exts->adm_group);
-			json_object_string_add(json, "adm-group", aux_buf);
+			json_object_string_add(json, "admGroup", aux_buf);
 		} else
 			sbuf_push(buf, indent, "Administrative Group: 0x%x\n",
 				  exts->adm_group);
 	}
 	if (IS_SUBTLV(exts, EXT_LLRI)) {
 		if (json) {
-			json_object_int_add(json, "link-local-id",
+			json_object_int_add(json, "linkLocalId",
 					    exts->local_llri);
-			json_object_int_add(json, "link-remote-id",
+			json_object_int_add(json, "linkRemoteId",
 					    exts->remote_llri);
 		} else {
 			sbuf_push(buf, indent, "Link Local  ID: %u\n",
@@ -271,7 +271,7 @@ static void format_item_ext_subtlvs(struct isis_ext_subtlvs *exts,
 		if (json) {
 			inet_ntop(AF_INET, &exts->local_addr, aux_buf,
 				  sizeof(aux_buf));
-			json_object_string_add(json, "local-iface-ip", aux_buf);
+			json_object_string_add(json, "localIfaceIp", aux_buf);
 		} else
 			sbuf_push(buf, indent,
 				  "Local Interface IP Address(es): %pI4\n",
@@ -281,8 +281,7 @@ static void format_item_ext_subtlvs(struct isis_ext_subtlvs *exts,
 		if (json) {
 			inet_ntop(AF_INET, &exts->neigh_addr, aux_buf,
 				  sizeof(aux_buf));
-			json_object_string_add(json, "remote-iface-ip",
-					       aux_buf);
+			json_object_string_add(json, "remoteIfaceIp", aux_buf);
 		} else
 			sbuf_push(buf, indent,
 				  "Remote Interface IP Address(es): %pI4\n",
@@ -292,8 +291,7 @@ static void format_item_ext_subtlvs(struct isis_ext_subtlvs *exts,
 		if (json) {
 			inet_ntop(AF_INET6, &exts->local_addr6, aux_buf,
 				  sizeof(aux_buf));
-			json_object_string_add(json, "local-iface-ipv6",
-					       aux_buf);
+			json_object_string_add(json, "localIfaceIpv6", aux_buf);
 		} else
 			sbuf_push(buf, indent,
 				  "Local Interface IPv6 Address(es): %pI6\n",
@@ -303,7 +301,7 @@ static void format_item_ext_subtlvs(struct isis_ext_subtlvs *exts,
 		if (json) {
 			inet_ntop(AF_INET6, &exts->neigh_addr6, aux_buf,
 				  sizeof(aux_buf));
-			json_object_string_add(json, "remote-iface-ipv6",
+			json_object_string_add(json, "remoteIfaceIpv6",
 					       aux_buf);
 		} else
 			sbuf_push(buf, indent,
@@ -314,7 +312,7 @@ static void format_item_ext_subtlvs(struct isis_ext_subtlvs *exts,
 		if (json) {
 			snprintfrr(aux_buf, sizeof(aux_buf), "%g",
 				   exts->max_bw);
-			json_object_string_add(json, "max-bandwith-bytes-sec",
+			json_object_string_add(json, "maxBandwithBytesSec",
 					       aux_buf);
 		} else
 			sbuf_push(buf, indent,
@@ -325,8 +323,8 @@ static void format_item_ext_subtlvs(struct isis_ext_subtlvs *exts,
 		if (json) {
 			snprintfrr(aux_buf, sizeof(aux_buf), "%g",
 				   exts->max_rsv_bw);
-			json_object_string_add(
-				json, "max-res-bandwith-bytes-sec", aux_buf);
+			json_object_string_add(json, "maxResBandwithBytesSec",
+					       aux_buf);
 		} else
 			sbuf_push(
 				buf, indent,
@@ -337,7 +335,7 @@ static void format_item_ext_subtlvs(struct isis_ext_subtlvs *exts,
 		if (json) {
 			struct json_object *unrsv_json;
 			unrsv_json = json_object_new_object();
-			json_object_object_add(json, "unrsv-bandwith-bytes-sec",
+			json_object_object_add(json, "unrsvBandwithBytesSec",
 					       unrsv_json);
 			for (int j = 0; j < MAX_CLASS_TYPE; j += 1) {
 				snprintfrr(cnt_buf, sizeof(cnt_buf), "%d", j);
@@ -359,7 +357,7 @@ static void format_item_ext_subtlvs(struct isis_ext_subtlvs *exts,
 	}
 	if (IS_SUBTLV(exts, EXT_TE_METRIC)) {
 		if (json) {
-			json_object_int_add(json, "te-metric", exts->te_metric);
+			json_object_int_add(json, "teMetric", exts->te_metric);
 		} else
 			sbuf_push(buf, indent,
 				  "Traffic Engineering Metric: %u\n",
@@ -367,7 +365,7 @@ static void format_item_ext_subtlvs(struct isis_ext_subtlvs *exts,
 	}
 	if (IS_SUBTLV(exts, EXT_RMT_AS)) {
 		if (json) {
-			json_object_int_add(json, "inter-as-te-remote-as",
+			json_object_int_add(json, "interAsTeRemoteAs",
 					    exts->remote_as);
 		} else
 			sbuf_push(buf, indent,
@@ -378,8 +376,8 @@ static void format_item_ext_subtlvs(struct isis_ext_subtlvs *exts,
 		if (json) {
 			inet_ntop(AF_INET6, &exts->remote_ip, aux_buf,
 				  sizeof(aux_buf));
-			json_object_string_add(
-				json, "inter-as-te-remote-asbr-ip", aux_buf);
+			json_object_string_add(json, "interAsTeRemoteAsbrIp",
+					       aux_buf);
 		} else
 			sbuf_push(buf, indent,
 				  "Inter-AS TE Remote ASBR IP address: %pI4\n",
@@ -390,12 +388,12 @@ static void format_item_ext_subtlvs(struct isis_ext_subtlvs *exts,
 		if (json) {
 			struct json_object *avg_json;
 			avg_json = json_object_new_object();
-			json_object_object_add(json, "avg-delay", avg_json);
+			json_object_object_add(json, "avgDelay", avg_json);
 			json_object_string_add(avg_json, "delay",
 					       IS_ANORMAL(exts->delay)
 						       ? "Anomalous"
 						       : "Normal");
-			json_object_int_add(avg_json, "micro-sec", exts->delay);
+			json_object_int_add(avg_json, "microSec", exts->delay);
 		} else
 			sbuf_push(buf, indent,
 				  "%s Average Link Delay: %u (micro-sec)\n",
@@ -407,7 +405,7 @@ static void format_item_ext_subtlvs(struct isis_ext_subtlvs *exts,
 		if (json) {
 			struct json_object *avg_json;
 			avg_json = json_object_new_object();
-			json_object_object_add(json, "max-min-delay", avg_json);
+			json_object_object_add(json, "maxMinDelay", avg_json);
 			json_object_string_add(avg_json, "delay",
 					       IS_ANORMAL(exts->min_delay)
 						       ? "Anomalous"
@@ -415,7 +413,7 @@ static void format_item_ext_subtlvs(struct isis_ext_subtlvs *exts,
 			snprintfrr(aux_buf, sizeof(aux_buf), "%u / %u",
 				   exts->min_delay & TE_EXT_MASK,
 				   exts->max_delay & TE_EXT_MASK);
-			json_object_string_add(avg_json, "micro-sec", aux_buf);
+			json_object_string_add(avg_json, "microSec", aux_buf);
 
 		} else
 			sbuf_push(
@@ -428,7 +426,7 @@ static void format_item_ext_subtlvs(struct isis_ext_subtlvs *exts,
 	}
 	if (IS_SUBTLV(exts, EXT_DELAY_VAR)) {
 		if (json) {
-			json_object_int_add(json, "delay-variation-micro-sec",
+			json_object_int_add(json, "delayVariationMicroSec",
 					    exts->delay_var & TE_EXT_MASK);
 		} else
 			sbuf_push(buf, indent,
@@ -442,13 +440,13 @@ static void format_item_ext_subtlvs(struct isis_ext_subtlvs *exts,
 					   LOSS_PRECISION));
 			struct json_object *link_json;
 			link_json = json_object_new_object();
-			json_object_object_add(json, "link-packet-loss",
+			json_object_object_add(json, "linkPacketLoss",
 					       link_json);
 			json_object_string_add(link_json, "loss",
 					       IS_ANORMAL(exts->pkt_loss)
 						       ? "Anomalous"
 						       : "Normal");
-			json_object_string_add(link_json, "percentaje",
+			json_object_string_add(link_json, "percentage",
 					       aux_buf);
 		} else
 			sbuf_push(buf, indent, "%s Link Packet Loss: %g (%%)\n",
@@ -461,9 +459,8 @@ static void format_item_ext_subtlvs(struct isis_ext_subtlvs *exts,
 		if (json) {
 			snprintfrr(aux_buf, sizeof(aux_buf), "%g",
 				   (exts->res_bw));
-			json_object_string_add(json,
-					       "unidir-residual-band-bytes-sec",
-					       aux_buf);
+			json_object_string_add(
+				json, "unidirResidualBandBytesSec", aux_buf);
 		} else
 			sbuf_push(
 				buf, indent,
@@ -475,8 +472,7 @@ static void format_item_ext_subtlvs(struct isis_ext_subtlvs *exts,
 			snprintfrr(aux_buf, sizeof(aux_buf), "%g",
 				   (exts->ava_bw));
 			json_object_string_add(
-				json, "unidir-available-band-bytes-sec",
-				aux_buf);
+				json, "unidirAvailableBandBytesSec", aux_buf);
 		} else
 			sbuf_push(
 				buf, indent,
@@ -487,9 +483,8 @@ static void format_item_ext_subtlvs(struct isis_ext_subtlvs *exts,
 		if (json) {
 			snprintfrr(aux_buf, sizeof(aux_buf), "%g",
 				   (exts->use_bw));
-			json_object_string_add(json,
-					       "unidir-utilized-band-bytes-sec",
-					       aux_buf);
+			json_object_string_add(
+				json, "unidirUtilizedBandBytesSec", aux_buf);
 		} else
 			sbuf_push(
 				buf, indent,
@@ -503,7 +498,7 @@ static void format_item_ext_subtlvs(struct isis_ext_subtlvs *exts,
 		if (json) {
 			struct json_object *arr_adj_json, *flags_json;
 			arr_adj_json = json_object_new_array();
-			json_object_object_add(json, "adj-sid", arr_adj_json);
+			json_object_object_add(json, "adjSid", arr_adj_json);
 			for (adj = (struct isis_adj_sid *)exts->adj_sid.head;
 			     adj; adj = adj->next) {
 				snprintfrr(cnt_buf, sizeof(cnt_buf), "%d",
@@ -513,36 +508,36 @@ static void format_item_ext_subtlvs(struct isis_ext_subtlvs *exts,
 						    adj->sid);
 				json_object_int_add(flags_json, "weight",
 						    adj->weight);
-				json_object_string_add(
-					flags_json, "flag-f",
+				json_object_boolean_add(
+					flags_json, "flagF",
 					adj->flags & EXT_SUBTLV_LINK_ADJ_SID_FFLG
-						? "1"
-						: "0");
-				json_object_string_add(
-					flags_json, "flag-b",
+						? true
+						: false);
+				json_object_boolean_add(
+					flags_json, "flagB",
 					adj->flags & EXT_SUBTLV_LINK_ADJ_SID_BFLG
-						? "1"
-						: "0");
-				json_object_string_add(
-					flags_json, "flag-v",
+						? true
+						: false);
+				json_object_boolean_add(
+					flags_json, "flagV",
 					adj->flags & EXT_SUBTLV_LINK_ADJ_SID_VFLG
-						? "1"
-						: "0");
-				json_object_string_add(
-					flags_json, "flag-l",
+						? true
+						: false);
+				json_object_boolean_add(
+					flags_json, "flagL",
 					adj->flags & EXT_SUBTLV_LINK_ADJ_SID_LFLG
-						? "1"
-						: "0");
-				json_object_string_add(
-					flags_json, "flag-s",
+						? true
+						: false);
+				json_object_boolean_add(
+					flags_json, "flagS",
 					adj->flags & EXT_SUBTLV_LINK_ADJ_SID_SFLG
-						? "1"
-						: "0");
-				json_object_string_add(
-					flags_json, "flag-p",
+						? true
+						: false);
+				json_object_boolean_add(
+					flags_json, "flagP",
 					adj->flags & EXT_SUBTLV_LINK_ADJ_SID_PFLG
-						? "1"
-						: "0");
+						? true
+						: false);
 				json_object_array_add(arr_adj_json, flags_json);
 			}
 		} else
@@ -578,8 +573,7 @@ static void format_item_ext_subtlvs(struct isis_ext_subtlvs *exts,
 		if (json) {
 			struct json_object *arr_adj_json, *flags_json;
 			arr_adj_json = json_object_new_array();
-			json_object_object_add(json, "lan-adj-sid",
-					       arr_adj_json);
+			json_object_object_add(json, "lanAdjSid", arr_adj_json);
 			for (lan = (struct isis_lan_adj_sid *)
 					   exts->adj_sid.head;
 			     lan; lan = lan->next) {
@@ -595,36 +589,36 @@ static void format_item_ext_subtlvs(struct isis_ext_subtlvs *exts,
 						    lan->sid);
 				json_object_int_add(flags_json, "weight",
 						    lan->weight);
-				json_object_string_add(
-					flags_json, "flag-f",
+				json_object_boolean_add(
+					flags_json, "flagF",
 					lan->flags & EXT_SUBTLV_LINK_ADJ_SID_FFLG
-						? "1"
-						: "0");
-				json_object_string_add(
-					flags_json, "flag-b",
+						? true
+						: false);
+				json_object_boolean_add(
+					flags_json, "flagB",
 					lan->flags & EXT_SUBTLV_LINK_ADJ_SID_BFLG
-						? "1"
-						: "0");
-				json_object_string_add(
-					flags_json, "flag-v",
+						? true
+						: false);
+				json_object_boolean_add(
+					flags_json, "flagV",
 					lan->flags & EXT_SUBTLV_LINK_ADJ_SID_VFLG
-						? "1"
-						: "0");
-				json_object_string_add(
-					flags_json, "flag-l",
+						? true
+						: false);
+				json_object_boolean_add(
+					flags_json, "flagL",
 					lan->flags & EXT_SUBTLV_LINK_ADJ_SID_LFLG
-						? "1"
-						: "0");
-				json_object_string_add(
-					flags_json, "flag-s",
+						? true
+						: false);
+				json_object_boolean_add(
+					flags_json, "flagS",
 					lan->flags & EXT_SUBTLV_LINK_ADJ_SID_SFLG
-						? "1"
-						: "0");
-				json_object_string_add(
-					flags_json, "flag-p",
+						? true
+						: false);
+				json_object_boolean_add(
+					flags_json, "flagP",
 					lan->flags & EXT_SUBTLV_LINK_ADJ_SID_PFLG
-						? "1"
-						: "0");
+						? true
+						: false);
 				json_object_array_add(arr_adj_json, flags_json);
 			}
 		} else
@@ -1187,36 +1181,41 @@ static void format_item_prefix_sid(uint16_t mtid, struct isis_item *i,
 	struct isis_prefix_sid *sid = (struct isis_prefix_sid *)i;
 
 	if (json) {
-		struct json_object *sr_json;
+		struct json_object *sr_json, *array_json;
 		sr_json = json_object_new_object();
-		json_object_object_add(json, "sr", sr_json);
+		json_object_object_get_ex(json, "sr", &array_json);
+		if (!array_json) {
+			array_json = json_object_new_array();
+			json_object_object_add(json, "sr", array_json);
+		}
+		json_object_array_add(array_json, sr_json);
 		if (sid->flags & ISIS_PREFIX_SID_VALUE) {
 			json_object_int_add(sr_json, "label", sid->value);
 		} else {
 			json_object_int_add(sr_json, "index", sid->value);
 		}
 		json_object_int_add(sr_json, "alg", sid->algorithm);
-		json_object_string_add(
+		json_object_boolean_add(
 			sr_json, "readvertised",
-			((sid->flags & ISIS_PREFIX_SID_READVERTISED) ? "yes"
-								     : ""));
-		json_object_string_add(
+			((sid->flags & ISIS_PREFIX_SID_READVERTISED) ? true
+								     : false));
+		json_object_boolean_add(
 			sr_json, "node",
-			((sid->flags & ISIS_PREFIX_SID_NODE) ? "yes" : ""));
+			((sid->flags & ISIS_PREFIX_SID_NODE) ? true : false));
 		json_object_string_add(sr_json, "php",
 				       ((sid->flags & ISIS_PREFIX_SID_NO_PHP)
 						? "no-php"
 						: "php"));
-		json_object_string_add(
-			sr_json, "explicit-null",
-			((sid->flags & ISIS_PREFIX_SID_EXPLICIT_NULL) ? "yes"
-								      : ""));
-		json_object_string_add(
+		json_object_boolean_add(
+			sr_json, "explicitNull",
+			((sid->flags & ISIS_PREFIX_SID_EXPLICIT_NULL) ? true
+								      : false));
+		json_object_boolean_add(
 			sr_json, "value",
-			((sid->flags & ISIS_PREFIX_SID_VALUE) ? "yes" : ""));
-		json_object_string_add(
+			((sid->flags & ISIS_PREFIX_SID_VALUE) ? true : false));
+		json_object_boolean_add(
 			sr_json, "local",
-			((sid->flags & ISIS_PREFIX_SID_LOCAL) ? "yes" : ""));
+			((sid->flags & ISIS_PREFIX_SID_LOCAL) ? true : false));
 
 	} else {
 		sbuf_push(buf, indent, "SR Prefix-SID ");
@@ -1346,7 +1345,7 @@ static void format_subtlv_ipv6_source_prefix(struct prefix_ipv6 *p,
 	char prefixbuf[PREFIX2STR_BUFFER];
 	if (json) {
 		prefix2str(p, prefixbuf, sizeof(prefixbuf));
-		json_object_string_add(json, "ipv6-src-prefix", prefixbuf);
+		json_object_string_add(json, "ipv6SrcPrefix", prefixbuf);
 	} else {
 		sbuf_push(buf, indent, "IPv6 Source Prefix: %s\n",
 			  prefix2str(p, prefixbuf, sizeof(prefixbuf)));
@@ -1542,7 +1541,7 @@ static void format_item_area_address(uint16_t mtid, struct isis_item *i,
 	struct isis_area_address *addr = (struct isis_area_address *)i;
 
 	if (json) {
-		json_object_string_add(json, "area-addr",
+		json_object_string_add(json, "areaAddr",
 				       isonet_print(addr->addr, addr->len));
 	} else {
 		sbuf_push(buf, indent, "Area Address: %s\n",
@@ -1630,10 +1629,16 @@ static void format_item_oldstyle_reach(uint16_t mtid, struct isis_item *i,
 	struct isis_oldstyle_reach *r = (struct isis_oldstyle_reach *)i;
 
 	if (json) {
-		struct json_object *old_json;
+		struct json_object *old_json, *array_json;
 		old_json = json_object_new_object();
-		json_object_object_add(json, "old-reach-style", old_json);
-		json_object_string_add(old_json, "is-reach",
+		json_object_object_get_ex(json, "isReach", &array_json);
+		if (!array_json) {
+			array_json = json_object_new_array();
+			json_object_object_add(json, "isReach", array_json);
+		}
+		json_object_array_add(array_json, old_json);
+		json_object_object_add(json, "isReach", old_json);
+		json_object_string_add(old_json, "isNeighbor",
 				       isis_format_id(r->id, 7));
 		json_object_int_add(old_json, "metric", r->metric);
 	} else
@@ -1712,7 +1717,7 @@ static void format_item_lan_neighbor(uint16_t mtid, struct isis_item *i,
 	struct isis_lan_neighbor *n = (struct isis_lan_neighbor *)i;
 
 	if (json) {
-		json_object_string_add(json, "lan-neighbor",
+		json_object_string_add(json, "lanNeighbor",
 				       isis_format_id(n->mac, 6));
 	} else
 		sbuf_push(buf, indent, "LAN Neighbor: %s\n",
@@ -1786,7 +1791,7 @@ static void format_item_lsp_entry(uint16_t mtid, struct isis_item *i,
 		char buf[255];
 		struct json_object *lsp_json;
 		lsp_json = json_object_new_object();
-		json_object_object_add(json, "lsp-entry", lsp_json);
+		json_object_object_add(json, "lspEntry", lsp_json);
 		json_object_string_add(lsp_json, "id", isis_format_id(e->id, 8));
 		snprintfrr(buf,sizeof(buf),"0x%08x",e->seqno);
 		json_object_string_add(lsp_json, "seq", buf);
@@ -1871,21 +1876,26 @@ static void format_item_extended_reach(uint16_t mtid, struct isis_item *i,
 	struct isis_extended_reach *r = (struct isis_extended_reach *)i;
 
 	if (json) {
-		struct json_object *reach_json;
+		struct json_object *reach_json, *array_json;
 		reach_json = json_object_new_object();
-		json_object_object_add(json, "ext-reach", reach_json);
+		json_object_object_get_ex(json, "extReach", &array_json);
+		if (!array_json) {
+			array_json = json_object_new_array();
+			json_object_object_add(json, "extReach", array_json);
+		}
+		json_object_array_add(array_json, reach_json);
 		json_object_string_add(
-			reach_json, "mt-id",
+			reach_json, "mtId",
 			(mtid == ISIS_MT_IPV4_UNICAST) ? "Extended" : "MT");
 		json_object_string_add(reach_json, "id",
 				       isis_format_id(r->id, 7));
 		json_object_int_add(reach_json, "metric", r->metric);
 		if (mtid != ISIS_MT_IPV4_UNICAST)
-			json_object_string_add(reach_json, "mt-name",
+			json_object_string_add(reach_json, "mtName",
 					       isis_mtid2str(mtid));
 
 		if (r->subtlvs)
-			format_item_ext_subtlvs(r->subtlvs, NULL, json,
+			format_item_ext_subtlvs(r->subtlvs, NULL, reach_json,
 						indent + 2, mtid);
 	} else {
 		sbuf_push(buf, indent, "%s Reachability: %s (Metric: %u)",
@@ -2013,9 +2023,14 @@ static void format_item_oldstyle_ip_reach(uint16_t mtid, struct isis_item *i,
 	char prefixbuf[PREFIX2STR_BUFFER];
 
 	if (json) {
-		struct json_object *old_json;
+		struct json_object *old_json, *array_json;
 		old_json = json_object_new_object();
-		json_object_object_add(json, "old-ip-reach-style", old_json);
+		json_object_object_get_ex(json, "ipReach", &array_json);
+		if (!array_json) {
+			array_json = json_object_new_array();
+			json_object_object_add(json, "ipReach", old_json);
+		}
+		json_object_array_add(array_json, old_json);
 		json_object_string_add(old_json, "prefix",
 				       prefix2str(&r->prefix, prefixbuf, sizeof(prefixbuf)));
 		json_object_int_add(old_json, "metric", r->metric);
@@ -2112,7 +2127,7 @@ static void format_tlv_protocols_supported(struct isis_protocols_supported *p,
 		char buf[255];
 
 		protocol_json = json_object_new_object();
-		json_object_object_add(json, "protocols-supported",
+		json_object_object_add(json, "supportedProtocols",
 				       protocol_json);
 		for (uint8_t i = 0; i < p->count; i++) {
 			snprintfrr(buf, sizeof(buf), "%d", i);
@@ -2335,7 +2350,7 @@ static void format_item_global_ipv6_address(uint16_t mtid, struct isis_item *i,
 
 	inet_ntop(AF_INET6, &a->addr, addrbuf, sizeof(addrbuf));
 	if (json)
-		json_object_string_add(json, "global-ipv6", addrbuf);
+		json_object_string_add(json, "globalIpv6", addrbuf);
 	else
 		sbuf_push(buf, indent, "Global IPv6 Interface Address: %s\n",
 			  addrbuf);
@@ -2404,10 +2419,17 @@ static void format_item_mt_router_info(uint16_t mtid, struct isis_item *i,
 	struct isis_mt_router_info *info = (struct isis_mt_router_info *)i;
 
 	if (json) {
-		struct json_object *mt_json;
+		struct json_object *mt_json, *array_json;
 		mt_json = json_object_new_object();
-		json_object_object_add(json, "mt", mt_json);
+		json_object_object_get_ex(json, "mt", &array_json);
+		if (!array_json) {
+			array_json = json_object_new_array();
+			json_object_object_add(json, "mt", array_json);
+		}
+		json_object_array_add(array_json, mt_json);
 		json_object_int_add(mt_json, "mtid", info->mtid);
+		json_object_string_add(mt_json, "mtDescription",
+				       isis_mtid2str_fake(info->mtid));
 		json_object_string_add(mt_json, "overload", info->overload?"true":"false");
 		json_object_string_add(mt_json, "attached", info->attached?"true":"false");
 	} else
@@ -2493,7 +2515,7 @@ static void format_tlv_te_router_id(const struct in_addr *id, struct sbuf *buf,
 	char addrbuf[INET_ADDRSTRLEN];
 	inet_ntop(AF_INET, id, addrbuf, sizeof(addrbuf));
 	if (json)
-		json_object_string_add(json, "te-router-id", addrbuf);
+		json_object_string_add(json, "teRouterId", addrbuf);
 	else
 		sbuf_push(buf, indent, "TE Router ID: %s\n", addrbuf);
 }
@@ -2565,27 +2587,34 @@ static void format_item_extended_ip_reach(uint16_t mtid, struct isis_item *i,
 					  struct json_object *json, int indent)
 {
 	struct isis_extended_ip_reach *r = (struct isis_extended_ip_reach *)i;
+	struct json_object *ext_json, *array_json;
 	char prefixbuf[PREFIX2STR_BUFFER];
 
 	if (json) {
-		struct json_object *ext_json;
 		ext_json = json_object_new_object();
-		json_object_object_add(json, "ext-ip-reach", ext_json);
+		json_object_object_get_ex(json, "extIpReach", &array_json);
+		if (!array_json) {
+			array_json = json_object_new_array();
+			json_object_object_add(json, "extIpReach", array_json);
+		}
+		json_object_array_add(array_json, ext_json);
 		json_object_string_add(
-			json, "mt-id",
+			ext_json, "mtId",
 			(mtid == ISIS_MT_IPV4_UNICAST) ? "Extended" : "MT");
 		json_object_string_add(
-			json, "ip-reach",
+			ext_json, "ipReach",
 			prefix2str(&r->prefix, prefixbuf, sizeof(prefixbuf)));
-		json_object_int_add(json, "ip-reach-metric", r->metric);
-		json_object_string_add(json, "down", r->down ? "yes" : "");
+		json_object_int_add(ext_json, "ipReachMetric", r->metric);
+		json_object_boolean_add(ext_json, "down",
+					r->down ? true : false);
 		if (mtid != ISIS_MT_IPV4_UNICAST)
-			json_object_string_add(json, "mt-name",
+			json_object_string_add(ext_json, "mtName",
 					       isis_mtid2str(mtid));
 		if (r->subtlvs) {
 			struct json_object *subtlv_json;
 			subtlv_json = json_object_new_object();
-			json_object_object_add(json, "subtlvs", subtlv_json);
+			json_object_object_add(ext_json, "subtlvs",
+					       subtlv_json);
 			format_subtlvs(r->subtlvs, NULL, subtlv_json, 0);
 		}
 	} else {
@@ -2846,7 +2875,7 @@ static void format_tlv_te_router_id_ipv6(const struct in6_addr *id,
 	char addrbuf[INET6_ADDRSTRLEN];
 	inet_ntop(AF_INET6, id, addrbuf, sizeof(addrbuf));
 	if (json)
-		json_object_string_add(json, "ipv6-te-router-id", addrbuf);
+		json_object_string_add(json, "ipv6TeRouterId", addrbuf);
 	else
 		sbuf_push(buf, indent, "IPv6 TE Router ID: %s\n", addrbuf);
 }
@@ -2925,8 +2954,7 @@ static void format_tlv_spine_leaf(const struct isis_spine_leaf *spine_leaf,
 	if (json) {
 		struct json_object *spine_json;
 		spine_json = json_object_new_object();
-		json_object_object_add(json, "spine-leaf-extension",
-				       spine_json);
+		json_object_object_add(json, "spineLeafExtension", spine_json);
 		if (spine_leaf->has_tier) {
 			snprintfrr(aux_buf, sizeof(aux_buf), "%hhu",
 				   spine_leaf->tier);
@@ -2936,12 +2964,12 @@ static void format_tlv_spine_leaf(const struct isis_spine_leaf *spine_leaf,
 					? "undefined"
 					: aux_buf);
 		}
-		json_object_string_add(spine_json, "flag-leaf",
-				       spine_leaf->is_leaf ? "yes" : "");
-		json_object_string_add(spine_json, "flag-spine",
-				       spine_leaf->is_spine ? "yes" : "");
-		json_object_string_add(spine_json, "flag-backup",
-				       spine_leaf->is_backup ? "yes" : "");
+		json_object_boolean_add(spine_json, "flagLeaf",
+					spine_leaf->is_leaf ? true : false);
+		json_object_boolean_add(spine_json, "flagSpine",
+					spine_leaf->is_spine ? true : false);
+		json_object_boolean_add(spine_json, "flagBackup",
+					spine_leaf->is_backup ? true : false);
 	} else {
 		sbuf_push(buf, indent, "Spine-Leaf-Extension:\n");
 		if (spine_leaf->has_tier) {
@@ -3081,19 +3109,19 @@ format_tlv_threeway_adj(const struct isis_threeway_adj *threeway_adj,
 	if (json) {
 		struct json_object *three_json;
 		three_json = json_object_new_object();
-		json_object_object_add(json, "p2p-three-way-adj", three_json);
+		json_object_object_add(json, "p2pThreeWayAdj", three_json);
 		json_object_string_add(
-			three_json, "state-name",
+			three_json, "stateName",
 			isis_threeway_state_name(threeway_adj->state));
 		json_object_int_add(three_json, "state", threeway_adj->state);
-		json_object_int_add(three_json, "ext-local-circuit-id",
+		json_object_int_add(three_json, "extLocalCircuitId",
 				    threeway_adj->local_circuit_id);
 		if (!threeway_adj->neighbor_set)
 			return;
 		json_object_string_add(
-			three_json, "neigh-system-id",
+			three_json, "neighSystemId",
 			isis_format_id(threeway_adj->neighbor_id, 6));
-		json_object_int_add(three_json, "neigh-ext-circuit-id",
+		json_object_int_add(three_json, "neighExtCircuitId",
 				    threeway_adj->neighbor_circuit_id);
 	} else {
 		sbuf_push(buf, indent, "P2P Three-Way Adjacency:\n");
@@ -3199,27 +3227,33 @@ static void format_item_ipv6_reach(uint16_t mtid, struct isis_item *i,
 	char prefixbuf[PREFIX2STR_BUFFER];
 
 	if (json) {
-		struct json_object *reach_json;
+		struct json_object *reach_json, *array_json;
 		reach_json = json_object_new_object();
-		json_object_object_add(json, "ipv6-reach", reach_json);
-		json_object_string_add(reach_json, "mt-id",
+		json_object_object_get_ex(json, "ipv6Reach", &array_json);
+		if (!array_json) {
+			array_json = json_object_new_array();
+			json_object_object_add(json, "ipv6Reach", array_json);
+		}
+		json_object_array_add(array_json, reach_json);
+		json_object_string_add(reach_json, "mtId",
 				       (mtid == ISIS_MT_IPV4_UNICAST) ? ""
 								      : "mt");
 		json_object_string_add(
 			reach_json, "prefix",
 			prefix2str(&r->prefix, prefixbuf, sizeof(prefixbuf)));
 		json_object_int_add(reach_json, "metric", r->metric);
-		json_object_string_add(reach_json, "down",
-				       r->down ? "yes" : "");
-		json_object_string_add(reach_json, "external",
-				       r->external ? "yes" : "");
+		json_object_boolean_add(reach_json, "down",
+					r->down ? true : false);
+		json_object_boolean_add(reach_json, "external",
+					r->external ? true : false);
 		if (mtid != ISIS_MT_IPV4_UNICAST)
-			json_object_string_add(reach_json, "mt-name",
+			json_object_string_add(reach_json, "mtName",
 					       isis_mtid2str(mtid));
 		if (r->subtlvs) {
 			struct json_object *subtlvs_json;
 			subtlvs_json = json_object_new_object();
-			json_object_object_add(json, "subtlvs", subtlvs_json);
+			json_object_object_add(reach_json, "subtlvs",
+					       subtlvs_json);
 			format_subtlvs(r->subtlvs, NULL, subtlvs_json, 0);
 		}
 	} else {
@@ -3401,30 +3435,30 @@ static void format_tlv_router_cap_json(const struct isis_router_cap *router_cap,
 	/* Router ID and Flags */
 	struct json_object *cap_json;
 	cap_json = json_object_new_object();
-	json_object_object_add(json, "router-capability", cap_json);
+	json_object_object_add(json, "routerCapability", cap_json);
 	inet_ntop(AF_INET, &router_cap->router_id, addrbuf, sizeof(addrbuf));
 	json_object_string_add(cap_json, "id", addrbuf);
-	json_object_string_add(
-		cap_json, "flag-d",
-		router_cap->flags & ISIS_ROUTER_CAP_FLAG_D ? "1" : "0");
-	json_object_string_add(
-		cap_json, "flag-s",
-		router_cap->flags & ISIS_ROUTER_CAP_FLAG_S ? "1" : "0");
+	json_object_boolean_add(
+		cap_json, "flagD",
+		router_cap->flags & ISIS_ROUTER_CAP_FLAG_D ? true : false);
+	json_object_boolean_add(
+		cap_json, "flagS",
+		router_cap->flags & ISIS_ROUTER_CAP_FLAG_S ? true : false);
 
 	/* Segment Routing Global Block as per RFC8667 section #3.1 */
 	if (router_cap->srgb.range_size != 0) {
 		struct json_object *gb_json;
 		gb_json = json_object_new_object();
-		json_object_object_add(json, "segment-routing-gb", gb_json);
-		json_object_string_add(gb_json, "ipv4",
-				       IS_SR_IPV4(&router_cap->srgb) ? "1"
-								     : "0");
-		json_object_string_add(gb_json, "ipv6",
-				       IS_SR_IPV6(&router_cap->srgb) ? "1"
-								     : "0");
-		json_object_int_add(gb_json, "global-block-base",
+		json_object_object_add(json, "segmentRoutingGb", gb_json);
+		json_object_boolean_add(gb_json, "ipv4",
+					IS_SR_IPV4(&router_cap->srgb) ? true
+								      : false);
+		json_object_boolean_add(gb_json, "ipv6",
+					IS_SR_IPV6(&router_cap->srgb) ? true
+								      : false);
+		json_object_int_add(gb_json, "globalBlockBase",
 				    router_cap->srgb.lower_bound);
-		json_object_int_add(gb_json, "global-block-range",
+		json_object_int_add(gb_json, "globalBlockRange",
 				    router_cap->srgb.range_size);
 	}
 
@@ -3432,10 +3466,10 @@ static void format_tlv_router_cap_json(const struct isis_router_cap *router_cap,
 	if (router_cap->srlb.range_size != 0) {
 		struct json_object *lb_json;
 		lb_json = json_object_new_object();
-		json_object_object_add(json, "segment-routing-lb", lb_json);
-		json_object_int_add(lb_json, "global-block-base",
+		json_object_object_add(json, "segmentRoutingLb", lb_json);
+		json_object_int_add(lb_json, "globalBlockBase",
 				    router_cap->srlb.lower_bound);
-		json_object_int_add(lb_json, "global-block-range",
+		json_object_int_add(lb_json, "globalBlockRange",
 				    router_cap->srlb.range_size);
 	}
 
@@ -3444,7 +3478,7 @@ static void format_tlv_router_cap_json(const struct isis_router_cap *router_cap,
 		char buf[255];
 		struct json_object *alg_json;
 		alg_json = json_object_new_object();
-		json_object_object_add(json, "segment-routing-algorithm",
+		json_object_object_add(json, "segmentRoutingAlgorithm",
 				       alg_json);
 		for (int i = 0; i < SR_ALGORITHM_COUNT; i++)
 			if (router_cap->algo[i] != SR_ALGORITHM_UNSET) {
@@ -3811,14 +3845,14 @@ static void format_item_auth(uint16_t mtid, struct isis_item *i,
 	char obuf[768];
 
 	if (json)
-		json_object_string_add(json, "test-auth", "ok");
+		json_object_string_add(json, "testAuth", "ok");
 	else
 		sbuf_push(buf, indent, "Authentication:\n");
 	switch (auth->type) {
 	case ISIS_PASSWD_TYPE_CLEARTXT:
 		zlog_sanitize(obuf, sizeof(obuf), auth->value, auth->length);
 		if (json)
-			json_object_string_add(json, "auth-pass", obuf);
+			json_object_string_add(json, "authPass", obuf);
 		else
 			sbuf_push(buf, indent, "  Password: %s\n", obuf);
 		break;
@@ -3828,13 +3862,13 @@ static void format_item_auth(uint16_t mtid, struct isis_item *i,
 				 auth->value[j]);
 		}
 		if (json)
-			json_object_string_add(json, "auth-hmac-md5", obuf);
+			json_object_string_add(json, "authHmacMd5", obuf);
 		else
 			sbuf_push(buf, indent, "  HMAC-MD5: %s\n", obuf);
 		break;
 	default:
 		if (json)
-			json_object_int_add(json, "auth-unknown", auth->type);
+			json_object_int_add(json, "authUnknown", auth->type);
 		else
 			sbuf_push(buf, indent, "  Unknown (%hhu)\n",
 				  auth->type);
@@ -3944,14 +3978,14 @@ static void format_tlv_purge_originator(struct isis_purge_originator *poi,
 	if (json) {
 		struct json_object *purge_json;
 		purge_json = json_object_new_object();
-		json_object_object_add(json, "purge_originator", purge_json);
+		json_object_object_add(json, "purgeOriginator", purge_json);
 
 		json_object_string_add(
 			purge_json, "id",
 			isis_format_id(poi->generator, sizeof(poi->generator)));
 		if (poi->sender_set) {
 			json_object_string_add(
-				purge_json, "rec-from",
+				purge_json, "recFrom",
 				isis_format_id(poi->sender,
 					       sizeof(poi->sender)));
 		}
@@ -3961,7 +3995,7 @@ static void format_tlv_purge_originator(struct isis_purge_originator *poi,
 			buf, indent, "  Generator: %s\n",
 			isis_format_id(poi->generator, sizeof(poi->generator)));
 		if (poi->sender_set) {
-			sbuf_push(buf, indent, "  Received-From: %s\n",
+			sbuf_push(buf, indent, "  ReceivedFrom: %s\n",
 				  isis_format_id(poi->sender,
 						 sizeof(poi->sender)));
 		}
@@ -4593,7 +4627,7 @@ static void format_tlvs(struct isis_tlvs *tlvs, struct sbuf *buf, struct json_ob
 
 	if (tlvs->mt_router_info_empty) {
 		if (json)
-			json_object_string_add(json, "mt-router-info", "none");
+			json_object_object_add(json, "mtRouterInfo", NULL);
 		else
 			sbuf_push(buf, indent, "MT Router Info: None\n");
 	} else {
