@@ -89,7 +89,7 @@ mpls_label_t bgp_adv_label(struct bgp_dest *dest, struct bgp_path_info *pi,
 	if (!dest || !pi || !to)
 		return MPLS_INVALID_LABEL;
 
-	remote_label = pi->extra ? pi->extra->label[0] : MPLS_INVALID_LABEL;
+	remote_label = pi->attr->label_tbl[0];
 	from = pi->peer;
 	reflect =
 		((from->sort == BGP_PEER_IBGP) && (to->sort == BGP_PEER_IBGP));
@@ -391,6 +391,10 @@ int bgp_nlri_parse_label(struct peer *peer, struct attr *attr,
 			return BGP_NLRI_PARSE_ERROR_LABEL_LENGTH;
 		}
 		p.prefixlen = prefixlen - BSIZE(llen);
+		if (attr) {
+			attr->num_labels = 1;
+			attr->label_tbl[0] = label;
+		}
 
 		/* There needs to be at least one label */
 		if (prefixlen < 24) {
@@ -451,7 +455,7 @@ int bgp_nlri_parse_label(struct peer *peer, struct attr *attr,
 		if (attr) {
 			bgp_update(peer, &p, addpath_id, attr, packet->afi,
 				   safi, ZEBRA_ROUTE_BGP, BGP_ROUTE_NORMAL,
-				   NULL, &label, 1, 0, NULL);
+				   NULL, 0, NULL);
 		} else {
 			bgp_withdraw(peer, &p, addpath_id, packet->afi,
 				     SAFI_UNICAST, ZEBRA_ROUTE_BGP,
@@ -469,4 +473,80 @@ int bgp_nlri_parse_label(struct peer *peer, struct attr *attr,
 	}
 
 	return BGP_NLRI_PARSE_OK;
+}
+
+bool bgp_labels_same(const struct attr *attr1, mpls_label_t *tbl,
+		     uint32_t num_labels)
+{
+	uint32_t i;
+
+	if (attr1->num_labels != num_labels)
+		return false;
+	if (attr1->num_labels == 0)
+		return true;
+
+	for (i = 0; i < attr1->num_labels; i++) {
+		if (attr1->label_tbl[i] != tbl[i])
+			return false;
+	}
+	return true;
+}
+
+/*
+ * make encoded route labels match specified encoded label set
+ */
+static void setlabels(struct attr *attr,
+		      mpls_label_t *label, /* array of labels */
+		      uint32_t num_labels, bool set_valid_label)
+{
+	uint32_t i;
+
+	if (num_labels == 0) {
+		attr->num_labels = 0;
+		for (i = 0; i < BGP_MAX_LABELS; i++)
+			attr->label_tbl[i] = MPLS_INVALID_LABEL;
+		return;
+	}
+
+	for (i = 0; i < BGP_MAX_LABELS; ++i) {
+		if (i < num_labels) {
+			attr->label_tbl[i] = label[i];
+			if (set_valid_label && !bgp_is_valid_label(&label[i]))
+				bgp_set_valid_label(&attr->label_tbl[i]);
+		} else
+			attr->label_tbl[i] = MPLS_INVALID_LABEL;
+	}
+	attr->num_labels = num_labels;
+}
+
+/* this function returns newly interned attr structure with new labels
+ * direct_copy : true if label should be directly copied to attr
+ *               false if attr need to be uninterned,
+ *                     and a new attr should be interned
+ * set_valid_label: true if 0x02 bit should be set on labels
+ *                  false if simple_copy
+ */
+struct attr *bgp_labels_set(struct attr *attr,
+			    mpls_label_t *label, /* array of labels */
+			    uint32_t num_labels, bool direct_copy,
+			    bool set_valid_label)
+{
+	struct attr local_attr;
+	struct attr *attr_new;
+
+	if (num_labels != 0)
+		assert(label);
+	assert(num_labels <= BGP_MAX_LABELS);
+
+	if (direct_copy) {
+		attr_new = attr;
+		setlabels(attr_new, label, num_labels, set_valid_label);
+	} else {
+		local_attr = *attr;
+		setlabels(&local_attr, label, num_labels, set_valid_label);
+		attr_new = bgp_attr_intern(&local_attr);
+		bgp_attr_unintern(&attr);
+		bgp_attr_flush(&local_attr); /* free locally-allocated parts */
+	}
+	return attr_new;
 }

@@ -193,6 +193,10 @@ int bgp_nlri_parse_vpn(struct peer *peer, struct attr *attr,
 
 		STREAM_GET(&label, data, BGP_LABEL_BYTES);
 		bgp_set_valid_label(&label);
+		if (attr) {
+			attr->num_labels = 1;
+			attr->label_tbl[0] = label;
+		}
 
 		/* Copy routing distinguisher to rd. */
 		if (STREAM_READABLE(data) < 8) {
@@ -238,7 +242,7 @@ int bgp_nlri_parse_vpn(struct peer *peer, struct attr *attr,
 		if (attr) {
 			bgp_update(peer, &p, addpath_id, attr, packet->afi,
 				   SAFI_MPLS_VPN, ZEBRA_ROUTE_BGP,
-				   BGP_ROUTE_NORMAL, &prd, &label, 1, 0, NULL);
+				   BGP_ROUTE_NORMAL, &prd, 0, NULL);
 		} else {
 			bgp_withdraw(peer, &p, addpath_id, packet->afi,
 				     SAFI_MPLS_VPN, ZEBRA_ROUTE_BGP,
@@ -949,57 +953,6 @@ void transpose_sid(struct in6_addr *sid, uint32_t label, uint8_t offset,
 	}
 }
 
-static bool labels_same(struct bgp_path_info *bpi, mpls_label_t *label,
-			uint32_t n)
-{
-	uint32_t i;
-
-	if (!bpi->extra) {
-		if (!n)
-			return true;
-		else
-			return false;
-	}
-
-	if (n != bpi->extra->num_labels)
-		return false;
-
-	for (i = 0; i < n; ++i) {
-		if (label[i] != bpi->extra->label[i])
-			return false;
-	}
-	return true;
-}
-
-/*
- * make encoded route labels match specified encoded label set
- */
-static void setlabels(struct bgp_path_info *bpi,
-		      mpls_label_t *label, /* array of labels */
-		      uint32_t num_labels)
-{
-	if (num_labels)
-		assert(label);
-	assert(num_labels <= BGP_MAX_LABELS);
-
-	if (!num_labels) {
-		if (bpi->extra)
-			bpi->extra->num_labels = 0;
-		return;
-	}
-
-	struct bgp_path_info_extra *extra = bgp_path_info_extra_get(bpi);
-	uint32_t i;
-
-	for (i = 0; i < num_labels; ++i) {
-		extra->label[i] = label[i];
-		if (!bgp_is_valid_label(&label[i])) {
-			bgp_set_valid_label(&extra->label[i]);
-		}
-	}
-	extra->num_labels = num_labels;
-}
-
 /*
  * make encoded route SIDs match specified encoded sid set
  */
@@ -1139,7 +1092,7 @@ leak_update(struct bgp *to_bgp, struct bgp_dest *bn,
 	}
 
 	if (bpi) {
-		bool labelssame = labels_same(bpi, label, num_labels);
+		bool labelssame = bgp_labels_same(bpi->attr, label, num_labels);
 
 		if (CHECK_FLAG(source_bpi->flags, BGP_PATH_REMOVED)
 		    && CHECK_FLAG(bpi->flags, BGP_PATH_REMOVED)) {
@@ -1187,6 +1140,13 @@ leak_update(struct bgp *to_bgp, struct bgp_dest *bn,
 		/* attr is changed */
 		bgp_path_info_set_flag(bn, bpi, BGP_PATH_ATTR_CHANGED);
 
+		/*
+		 * rewrite labels
+		 */
+		if (!labelssame)
+			new_attr = bgp_labels_set(new_attr, label, num_labels,
+						  false, true);
+
 		/* Rewrite BGP route information. */
 		if (CHECK_FLAG(bpi->flags, BGP_PATH_REMOVED))
 			bgp_path_info_restore(bn, bpi);
@@ -1195,12 +1155,6 @@ leak_update(struct bgp *to_bgp, struct bgp_dest *bn,
 		bgp_attr_unintern(&bpi->attr);
 		bpi->attr = new_attr;
 		bpi->uptime = monotime(NULL);
-
-		/*
-		 * rewrite labels
-		 */
-		if (!labelssame)
-			setlabels(bpi, label, num_labels);
 
 		/*
 		 * rewrite sid
@@ -1266,6 +1220,10 @@ leak_update(struct bgp *to_bgp, struct bgp_dest *bn,
 		return NULL;
 	}
 
+	if (num_labels)
+		new_attr = bgp_labels_set(new_attr, label, num_labels, false,
+					  true);
+
 	new = info_make(ZEBRA_ROUTE_BGP, BGP_ROUTE_IMPORTED, 0,
 			to_bgp->peer_self, new_attr, bn);
 
@@ -1305,9 +1263,6 @@ leak_update(struct bgp *to_bgp, struct bgp_dest *bn,
 			setsids(new, &new_attr->srv6_vpn->sid, num_sids);
 	} else
 		unsetsids(new);
-
-	if (num_labels)
-		setlabels(new, label, num_labels);
 
 	new->extra->parent = bgp_path_info_lock(parent);
 	bgp_dest_lock_node(
@@ -1915,6 +1870,7 @@ static bool vpn_leak_to_vrf_update_onevrf(struct bgp *to_bgp,   /* to */
 
 	/* shallow copy */
 	static_attr = *path_vpn->attr;
+	bgp_labels_init(&static_attr);
 
 	struct ecommunity *old_ecom;
 	struct ecommunity *new_ecom;
@@ -2027,11 +1983,6 @@ static bool vpn_leak_to_vrf_update_onevrf(struct bgp *to_bgp,   /* to */
 			nexthop_self_flag = 0;
 	}
 
-	new_attr = bgp_attr_intern(&static_attr);
-	bgp_attr_flush(&static_attr);
-
-	bn = bgp_afi_node_get(to_bgp->rib[afi][safi], afi, safi, p, NULL);
-
 	/*
 	 * ensure labels are copied
 	 *
@@ -2062,18 +2013,22 @@ static bool vpn_leak_to_vrf_update_onevrf(struct bgp *to_bgp,   /* to */
 		}
 
 		/* copy labels */
-		if (!origin_local && path_vpn->extra
-		    && path_vpn->extra->num_labels) {
-			num_labels = path_vpn->extra->num_labels;
+		if (!origin_local && path_vpn->attr->num_labels) {
+			num_labels = path_vpn->attr->num_labels;
 			if (num_labels > BGP_MAX_LABELS)
 				num_labels = BGP_MAX_LABELS;
-			pLabels = path_vpn->extra->label;
+			pLabels = path_vpn->attr->label_tbl;
 		}
 	}
 
 	if (debug)
 		zlog_debug("%s: pfx %pBD: num_labels %d", __func__,
 			   path_vpn->net, num_labels);
+
+	new_attr = bgp_attr_intern(&static_attr);
+	bgp_attr_flush(&static_attr);
+
+	bn = bgp_afi_node_get(to_bgp->rib[afi][safi], afi, safi, p, NULL);
 
 	leak_update(to_bgp, bn, new_attr, afi, safi, path_vpn, pLabels,
 		    num_labels, src_vrf, &nexthop_orig, nexthop_self_flag,

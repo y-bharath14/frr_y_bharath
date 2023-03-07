@@ -1510,7 +1510,6 @@ static int update_evpn_type5_route_entry(struct bgp *bgp_evpn,
 {
 	struct attr *attr_new = NULL;
 	struct bgp_path_info *pi = NULL;
-	mpls_label_t label = MPLS_INVALID_LABEL;
 	struct bgp_path_info *local_pi = NULL;
 	struct bgp_path_info *tmp_pi = NULL;
 
@@ -1540,12 +1539,6 @@ static int update_evpn_type5_route_entry(struct bgp *bgp_evpn,
 		pi = info_make(ZEBRA_ROUTE_BGP, BGP_ROUTE_STATIC, 0,
 			       bgp_evpn->peer_self, attr_new, dest);
 		SET_FLAG(pi->flags, BGP_PATH_VALID);
-
-		/* Type-5 routes advertise the L3-VNI */
-		bgp_path_info_extra_get(pi);
-		vni2label(bgp_vrf->l3vni, &label);
-		memcpy(&pi->extra->label, &label, sizeof(label));
-		pi->extra->num_labels = 1;
 
 		/* add the route entry to route node*/
 		bgp_path_info_add(dest, pi);
@@ -1587,6 +1580,7 @@ static int update_evpn_type5_route(struct bgp *bgp_vrf, struct prefix_evpn *evp,
 	struct bgp_dest *dest = NULL;
 	struct bgp *bgp_evpn = NULL;
 	int route_changed = 0;
+	mpls_label_t label;
 
 	bgp_evpn = bgp_get_evpn();
 	if (!bgp_evpn)
@@ -1601,6 +1595,10 @@ static int update_evpn_type5_route(struct bgp *bgp_vrf, struct prefix_evpn *evp,
 		memset(&attr, 0, sizeof(attr));
 		bgp_attr_default_set(&attr, bgp_vrf, BGP_ORIGIN_IGP);
 	}
+
+	/* Type-5 routes advertise the L3-VNI */
+	vni2label(bgp_vrf->l3vni, &label);
+	bgp_labels_set(&attr, &label, 1, true, false);
 
 	/* Advertise Primary IP (PIP) is enabled, send individual
 	 * IP (default instance router-id) as nexthop.
@@ -1837,6 +1835,7 @@ static int update_evpn_route_entry(struct bgp *bgp, struct bgpevpn *vpn,
 	struct bgp_path_info *tmp_pi;
 	struct bgp_path_info *local_pi;
 	struct attr *attr_new;
+	struct attr local_attr;
 	mpls_label_t label[BGP_MAX_LABELS];
 	uint32_t num_labels = 1;
 	int route_change = 1;
@@ -1870,19 +1869,12 @@ static int update_evpn_route_entry(struct bgp *bgp, struct bgpevpn *vpn,
 		add_mac_mobility_to_attr(seq, attr);
 
 	if (!local_pi) {
-		/* Add (or update) attribute to hash. */
-		attr_new = bgp_attr_intern(attr);
+		local_attr = *attr;
 
 		/* Extract MAC mobility sequence number, if any. */
-		attr_new->mm_seqnum =
-			bgp_attr_mac_mobility_seqnum(attr_new, &sticky);
-		attr_new->sticky = sticky;
-
-		/* Create new route with its attribute. */
-		tmp_pi = info_make(ZEBRA_ROUTE_BGP, BGP_ROUTE_STATIC, 0,
-				   bgp->peer_self, attr_new, dest);
-		SET_FLAG(tmp_pi->flags, BGP_PATH_VALID);
-		bgp_path_info_extra_get(tmp_pi);
+		local_attr.mm_seqnum =
+			bgp_attr_mac_mobility_seqnum(&local_attr, &sticky);
+		local_attr.sticky = sticky;
 
 		/* The VNI goes into the 'label' field of the route */
 		vni2label(vpn->vni, &label[0]);
@@ -1902,10 +1894,18 @@ static int update_evpn_route_entry(struct bgp *bgp, struct bgpevpn *vpn,
 			}
 		}
 
-		memcpy(&tmp_pi->extra->label, label, sizeof(label));
-		tmp_pi->extra->num_labels = num_labels;
+		bgp_labels_set(&local_attr, &label[0], num_labels, true, false);
+
+		/* Add (or update) attribute to hash. */
+		attr_new = bgp_attr_intern(&local_attr);
+
+		/* Create new route with its attribute. */
+		tmp_pi = info_make(ZEBRA_ROUTE_BGP, BGP_ROUTE_STATIC, 0,
+				   bgp->peer_self, attr_new, dest);
+		SET_FLAG(tmp_pi->flags, BGP_PATH_VALID);
 
 		if (evp->prefix.route_type == BGP_EVPN_MAC_IP_ROUTE) {
+			bgp_path_info_extra_get(tmp_pi);
 			if (mac)
 				evpn_type2_path_info_set_mac(tmp_pi, *mac);
 			else if (ip)
@@ -1938,8 +1938,6 @@ static int update_evpn_route_entry(struct bgp *bgp, struct bgpevpn *vpn,
 					num_labels++;
 				}
 			}
-			memcpy(&tmp_pi->extra->label, label, sizeof(label));
-			tmp_pi->extra->num_labels = num_labels;
 
 			if (evp->prefix.route_type == BGP_EVPN_MAC_IP_ROUTE) {
 				if (mac)
@@ -1952,14 +1950,19 @@ static int update_evpn_route_entry(struct bgp *bgp, struct bgpevpn *vpn,
 
 			/* The attribute has changed. */
 			/* Add (or update) attribute to hash. */
-			attr_new = bgp_attr_intern(attr);
+			local_attr = *attr;
 			bgp_path_info_set_flag(dest, tmp_pi,
 					       BGP_PATH_ATTR_CHANGED);
 
 			/* Extract MAC mobility sequence number, if any. */
-			attr_new->mm_seqnum =
-				bgp_attr_mac_mobility_seqnum(attr_new, &sticky);
-			attr_new->sticky = sticky;
+			local_attr.mm_seqnum = bgp_attr_mac_mobility_seqnum(
+				&local_attr, &sticky);
+			local_attr.sticky = sticky;
+
+			memcpy(&local_attr.label_tbl, label, sizeof(label));
+			local_attr.num_labels = num_labels;
+
+			attr_new = bgp_attr_intern(&local_attr);
 
 			/* Restore route, if needed. */
 			if (CHECK_FLAG(tmp_pi->flags, BGP_PATH_REMOVED))
@@ -2779,12 +2782,8 @@ bgp_create_evpn_bgp_path_info(struct bgp_path_info *parent_pi,
 	bgp_path_info_extra_get(pi);
 	pi->extra->parent = bgp_path_info_lock(parent_pi);
 	bgp_dest_lock_node((struct bgp_dest *)parent_pi->net);
-	if (parent_pi->extra) {
-		memcpy(&pi->extra->label, &parent_pi->extra->label,
-		       sizeof(pi->extra->label));
-		pi->extra->num_labels = parent_pi->extra->num_labels;
+	if (parent_pi->extra)
 		pi->extra->igpmetric = parent_pi->extra->igpmetric;
-	}
 
 	bgp_path_info_add(dest, pi);
 
@@ -2989,6 +2988,7 @@ static int install_evpn_route_entry_in_vni_common(
 						    parent_pi->attr);
 
 		if (p->prefix.route_type == BGP_EVPN_MAC_IP_ROUTE) {
+			bgp_path_info_extra_get(pi);
 			if (is_evpn_type2_dest_ipaddr_none(dest))
 				evpn_type2_path_info_set_ip(
 					pi, p->prefix.macip_addr.ip);
@@ -4510,12 +4510,14 @@ static int process_type2_route(struct peer *peer, afi_t afi, safi_t safi,
 		num_labels++;
 		STREAM_GET(&label[1], pkt, BGP_LABEL_BYTES);
 	}
+	if (attr)
+		bgp_labels_set(attr, label, num_labels, true, false);
 
 	/* Process the route. */
 	if (attr)
 		bgp_update(peer, (struct prefix *)&p, addpath_id, attr, afi,
-			   safi, ZEBRA_ROUTE_BGP, BGP_ROUTE_NORMAL, &prd,
-			   &label[0], num_labels, 0, &evpn);
+			   safi, ZEBRA_ROUTE_BGP, BGP_ROUTE_NORMAL, &prd, 0,
+			   &evpn);
 	else
 		bgp_withdraw(peer, (struct prefix *)&p, addpath_id, afi, safi,
 			     ZEBRA_ROUTE_BGP, BGP_ROUTE_NORMAL, &prd, &label[0],
@@ -4605,8 +4607,8 @@ static int process_type3_route(struct peer *peer, afi_t afi, safi_t safi,
 	/* Process the route. */
 	if (attr)
 		bgp_update(peer, (struct prefix *)&p, addpath_id, attr, afi,
-			   safi, ZEBRA_ROUTE_BGP, BGP_ROUTE_NORMAL, &prd, NULL,
-			   0, 0, NULL);
+			   safi, ZEBRA_ROUTE_BGP, BGP_ROUTE_NORMAL, &prd, 0,
+			   NULL);
 	else
 		bgp_withdraw(peer, (struct prefix *)&p, addpath_id, afi, safi,
 			     ZEBRA_ROUTE_BGP, BGP_ROUTE_NORMAL, &prd, NULL, 0,
@@ -4702,6 +4704,8 @@ static int process_type5_route(struct peer *peer, afi_t afi, safi_t safi,
 	memset(&label, 0, sizeof(label));
 	memcpy(&label, pfx, BGP_LABEL_BYTES);
 
+	if (attr)
+		bgp_labels_set(attr, &label, 1, true, false);
 	/*
 	 * If in future, we are required to access additional fields,
 	 * we MUST increment pfx by BGP_LABEL_BYTES in before reading the next
@@ -4739,8 +4743,8 @@ static int process_type5_route(struct peer *peer, afi_t afi, safi_t safi,
 	/* Process the route. */
 	if (attr && is_valid_update)
 		bgp_update(peer, (struct prefix *)&p, addpath_id, attr, afi,
-			   safi, ZEBRA_ROUTE_BGP, BGP_ROUTE_NORMAL, &prd,
-			   &label, 1, 0, &evpn);
+			   safi, ZEBRA_ROUTE_BGP, BGP_ROUTE_NORMAL, &prd, 0,
+			   &evpn);
 	else {
 		if (!is_valid_update) {
 			char attr_str[BUFSIZ] = {0};
@@ -7203,7 +7207,7 @@ vni_t bgp_evpn_path_info_get_l3vni(const struct bgp_path_info *pi)
 		return 0;
 
 	return label2vni(bgp_evpn_path_info_labels_get_l3vni(
-		pi->extra->label, pi->extra->num_labels));
+		pi->attr->label_tbl, pi->attr->num_labels));
 }
 
 /*

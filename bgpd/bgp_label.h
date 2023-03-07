@@ -11,6 +11,11 @@
 #define BGP_WITHDRAW_LABEL 0x800000
 #define BGP_PREVENT_VRF_2_VRF_LEAK 0xFFFFFFFE
 
+/* Maximum number of labels we can process or send with a prefix. We
+ * really do only 1 for MPLS (BGP-LU) but we can do 2 for EVPN-VxLAN.
+ */
+#define BGP_MAX_LABELS 2
+
 struct bgp_dest;
 struct bgp_path_info;
 struct peer;
@@ -89,5 +94,17 @@ static inline uint8_t label_bos(mpls_label_t *label)
 	uint8_t *t = (uint8_t *)label;
 	return (t[2] & 0x01);
 };
+
+bool bgp_labels_same(const struct attr *attr1, mpls_label_t *tbl,
+		     uint32_t num_labels);
+struct attr *bgp_labels_set(struct attr *attr,
+			    mpls_label_t *label, /* array of labels */
+			    uint32_t num_labels, bool direct_copy,
+			    bool set_valid_label);
+
+static inline void bgp_labels_init(struct attr *attr)
+{
+	bgp_labels_set(attr, NULL, 0, true, false);
+}
 
 #endif /* _BGP_LABEL_H */
