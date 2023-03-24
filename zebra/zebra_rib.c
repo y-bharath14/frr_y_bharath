@@ -123,7 +123,8 @@ static const struct {
 			      META_QUEUE_OTHER},
 	[ZEBRA_ROUTE_OLSR] = {ZEBRA_ROUTE_OLSR, ZEBRA_MAX_DISTANCE_DEFAULT,
 			      META_QUEUE_OTHER},
-	[ZEBRA_ROUTE_TABLE] = {ZEBRA_ROUTE_TABLE, ZEBRA_TABLE_DISTANCE_DEFAULT, META_QUEUE_STATIC},
+	[ZEBRA_ROUTE_TABLE] = {ZEBRA_ROUTE_TABLE, ZEBRA_TABLE_DISTANCE_DEFAULT,
+			       META_QUEUE_STATIC},
 	[ZEBRA_ROUTE_LDP] = {ZEBRA_ROUTE_LDP, ZEBRA_LDP_DISTANCE_DEFAULT,
 			     META_QUEUE_OTHER},
 	[ZEBRA_ROUTE_VNC] = {ZEBRA_ROUTE_VNC, ZEBRA_EBGP_DISTANCE_DEFAULT,
@@ -157,6 +158,9 @@ static const struct {
 			      META_QUEUE_OTHER},
 	[ZEBRA_ROUTE_ALL] = {ZEBRA_ROUTE_ALL, ZEBRA_MAX_DISTANCE_DEFAULT,
 			     META_QUEUE_OTHER},
+	[ZEBRA_ROUTE_FRR] = {ZEBRA_ROUTE_FRR, ZEBRA_STATIC_DISTANCE_DEFAULT,
+			     META_QUEUE_STATIC},
+
 	/* Any new route type added to zebra, should be mirrored here */
 
 	/* no entry/default: 150 */
@@ -1857,7 +1861,7 @@ struct route_node *rib_find_rn_from_ctx(const struct zebra_dplane_ctx *ctx)
 		dplane_ctx_get_afi(ctx), dplane_ctx_get_safi(ctx),
 		dplane_ctx_get_vrf(ctx), dplane_ctx_get_table(ctx));
 	if (table == NULL) {
-		if (IS_ZEBRA_DEBUG_DPLANE) {
+		if (IS_ZEBRA_DEBUG_DPLANE || IS_ZEBRA_DEBUG_RIB) {
 			zlog_debug(
 				"Failed to find route for ctx: no table for afi %d, safi %d, vrf %s(%u)",
 				dplane_ctx_get_afi(ctx),
@@ -1918,7 +1922,7 @@ static void rib_process_result(struct zebra_dplane_ctx *ctx)
 	op = dplane_ctx_get_op(ctx);
 	status = dplane_ctx_get_status(ctx);
 
-	if (IS_ZEBRA_DEBUG_DPLANE_DETAIL)
+	if (IS_ZEBRA_DEBUG_DPLANE_DETAIL || IS_ZEBRA_DEBUG_RIB_DETAILED)
 		zlog_debug(
 			"%s(%u:%u):%pRN Processing dplane result ctx %p, op %s result %s",
 			VRF_LOGNAME(vrf), dplane_ctx_get_vrf(ctx),
