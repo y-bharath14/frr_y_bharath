@@ -11927,7 +11927,60 @@ static int bgp_show_table(struct vty *vty, struct bgp *bgp, afi_t afi, safi_t sa
 	return CMD_SUCCESS;
 }
 
-int bgp_show_table_rd(struct vty *vty, struct bgp *bgp, afi_t afi, safi_t safi,
+int bgp_show_table_rtc(struct vty *vty, struct bgp *bgp, safi_t safi,
+		      struct bgp_table *table, enum bgp_show_type type, void *output_arg,
+		      uint16_t show_flags)
+{
+	struct bgp_dest *dest, *next;
+	unsigned long output_cum = 0;
+	unsigned long total_cum = 0;
+	struct bgp_table *itable;
+	bool show_msg;
+	bool use_json = !!CHECK_FLAG(show_flags, BGP_SHOW_OPT_JSON);
+
+	show_msg = (!use_json && type == bgp_show_type_normal);
+
+	for (dest = bgp_table_top(table); dest; dest = next) {
+		struct prefix *dest_p = bgp_dest_get_prefix(dest);
+
+		next = bgp_route_next(dest);
+
+		itable = bgp_dest_get_bgp_table_info(dest);
+		if (itable != NULL) {
+
+			struct bgp_path_info *pi = bgp_dest_get_bgp_path_info(dest);
+			struct ecommunity *ecom = ecommunity_parse(dest_p->u.prefix_rtc.route_target, 8, true);
+			char *ecomstr = ecommunity_ecom2str(ecom, ECOMMUNITY_FORMAT_DISPLAY, 0);
+			vty_out(vty, "Prefix: \n\tRoute Target: %s/%u\n\tOrigin-as: %u\n", ecomstr, dest_p->prefixlen, dest_p->u.prefix_rtc.origin_as);
+			route_vty_out_detail_header(vty, bgp,
+				 dest, dest_p,
+				 NULL,  AFI_IP,
+				 safi, NULL, false);
+			route_vty_out_detail(vty, bgp, dest,
+			  dest_p, pi,
+			  AFI_IP, safi,
+			  RPKI_NOT_BEING_USED,
+			  NULL);
+			if (next == NULL)
+				show_msg = false;
+		}
+	}
+	if (show_msg) {
+		if (output_cum == 0)
+			vty_out(vty, "No BGP prefixes displayed, %ld exist\n",
+				total_cum);
+		else
+			vty_out(vty,
+				"\nDisplayed  %ld routes and %ld total paths\n",
+				output_cum, total_cum);
+	} else {
+		if (use_json && output_cum == 0)
+			vty_out(vty, "{}\n");
+	}
+	return CMD_SUCCESS;
+}
+
+int bgp_show_table_rd(struct vty *vty, struct bgp *bgp, safi_t safi,
 		      struct bgp_table *table, struct prefix_rd *prd_match,
 		      enum bgp_show_type type, void *output_arg,
 		      uint16_t show_flags)
@@ -12008,6 +12061,11 @@ static int bgp_show(struct vty *vty, struct bgp *bgp, afi_t afi, safi_t safi,
 	if (safi == SAFI_MPLS_VPN) {
 		return bgp_show_table_rd(vty, bgp, afi, safi, table, NULL, type,
 					 output_arg, show_flags);
+	}
+
+	if (safi == SAFI_RTC) {
+		return bgp_show_table_rtc(vty, bgp, safi, table, type,
+					  output_arg, show_flags);
 	}
 
 	if (safi == SAFI_FLOWSPEC && type == bgp_show_type_detail) {
