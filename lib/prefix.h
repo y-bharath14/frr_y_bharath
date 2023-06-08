@@ -125,6 +125,11 @@ struct evpn_addr {
 #define prefix_addr u._prefix_addr
 };
 
+struct rtc_info {
+	uint32_t origin_as;
+	uint8_t route_target[8];
+};
+
 /*
  * A struct prefix contains an address family, a prefix length, and an
  * address.  This can represent either a 'network prefix' as defined
@@ -158,6 +163,10 @@ struct evpn_addr {
 #define AF_FLOWSPEC (AF_MAX + 2)
 #endif
 
+#if !defined(AF_RTC)
+#define AF_RTC (AF_MAX + 3)
+#endif
+
 struct flowspec_prefix {
 	uint8_t family;
 	uint16_t prefixlen; /* length in bytes */
@@ -181,6 +190,7 @@ struct prefix {
 		uint32_t val32[4];
 		uintptr_t ptr;
 		struct evpn_addr prefix_evpn; /* AF_EVPN */
+		struct rtc_info prefix_rtc; /* AF_RTC */
 		struct flowspec_prefix prefix_flowspec; /* AF_FLOWSPEC */
 	} u __attribute__((aligned(8)));
 };
@@ -226,6 +236,13 @@ struct prefix_evpn {
 	uint16_t prefixlen;
 	struct evpn_addr prefix __attribute__((aligned(8)));
 };
+
+struct prefix_rtc {
+	uint8_t family;
+	uint16_t prefixlen;
+	struct rtc_info prefix __attribute__((aligned(8)));
+};
+
 
 static inline int is_evpn_prefix_ipaddr_none(const struct prefix_evpn *evp)
 {
@@ -293,6 +310,7 @@ union prefixptr {
 	prefixtype(prefixptr, struct prefix_evpn, evp)
 	prefixtype(prefixptr, struct prefix_fs,   fs)
 	prefixtype(prefixptr, struct prefix_rd,   rd)
+	prefixtype(prefixptr, struct prefix_rtc,  rtc)
 } TRANSPARENT_UNION;
 
 union prefixconstptr {
@@ -302,6 +320,7 @@ union prefixconstptr {
 	prefixtype(prefixconstptr, const struct prefix_evpn, evp)
 	prefixtype(prefixconstptr, const struct prefix_fs,   fs)
 	prefixtype(prefixconstptr, const struct prefix_rd,   rd)
+	prefixtype(prefixconstptr, const struct prefix_rtc,  rtc)
 } TRANSPARENT_UNION;
 
 #ifndef INET_ADDRSTRLEN
@@ -654,6 +673,7 @@ static inline bool ipv4_mcast_ssm(const struct in_addr *addr)
 #pragma FRR printfrr_ext "%pFX"  (struct prefix_evpn *)
 #pragma FRR printfrr_ext "%pFX"  (struct prefix_fs *)
 #pragma FRR printfrr_ext "%pRDP"  (struct prefix_rd *)
+#pragma FRR printfrr_ext "%pRTC"  (struct prefix_rtc *)
 /* RD with AS4B with dot and dot+ format */
 #pragma FRR printfrr_ext "%pRDD"  (struct prefix_rd *)
 #pragma FRR printfrr_ext "%pRDE"  (struct prefix_rd *)
