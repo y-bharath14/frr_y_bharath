@@ -6998,6 +6998,278 @@ void bgp_purge_static_redist_routes(struct bgp *bgp)
 		bgp_purge_af_static_redist_routes(bgp, afi, safi);
 }
 
+int str2prefix_rtc(const char *str, struct prefix_rtc *p) {
+	struct ecommunity *ecom = NULL;
+	int ret;
+	int plen;
+	char *pnt;
+	char *cp;
+
+	p->prefix.origin_as = 65000;
+	p->family = AF_RTC;
+	p->prefixlen = 96;
+
+	/* Find slash inside string. */
+	pnt = strchr(str, '/');
+
+	/* String doesn't contail slash. */
+	if (pnt == NULL) {
+		ecom = ecommunity_str2com(str, ECOMMUNITY_ROUTE_TARGET, 0);
+		if (ecom == NULL) {
+		 	zlog_info("str2prefix_rtc: ecommunity_str2com failed");
+			return 0;
+		}
+		zlog_info("str2prefix_rtc: ecommunity_str2com success");
+		memcpy(&p->prefix.route_target, ecom->val, 8);
+		return ret;
+	} else {
+		cp = XMALLOC(MTYPE_TMP, (pnt - str) + 1);
+		memcpy(cp, str, pnt - str);
+		*(cp + (pnt - str)) = '\0';
+		zlog_info("output1: %s", cp);
+		ecom = ecommunity_str2com(cp, ECOMMUNITY_ROUTE_TARGET, 0);
+		if (ecom == NULL) {
+			XFREE(MTYPE_TMP, cp);
+		 	zlog_info("str2prefix_rtc: ecommunity_str2com failed");
+			return 0;
+		}
+
+		/* Get prefix length. */
+		plen = (uint8_t)atoi(++pnt);
+		zlog_info("output2: %d", plen);
+		if (plen > 96)
+			return 0;
+
+		p->prefixlen = plen;
+		zlog_info("output3: %d", PSIZE(plen) -4);
+		memcpy(&p->prefix.route_target, ecom->val, PSIZE(plen) -4);
+		XFREE(MTYPE_TMP, cp);
+		return ret;
+	}
+
+	return ret;
+
+}
+
+/*
+ * gpz 110624
+ * Currently this is used to set static routes for VPN and ENCAP.
+ * I think it can probably be factored with bgp_static_set.
+ */
+int bgp_static_set_safi(afi_t afi, safi_t safi, struct vty *vty,
+			const char *ip_str, const char *rd_str,
+			const char *label_str, const char *rmap_str,
+			int evpn_type, const char *esi, const char *gwip,
+			const char *ethtag, const char *routermac)
+{
+	VTY_DECLVAR_CONTEXT(bgp, bgp);
+	int ret;
+	struct prefix p;
+	struct prefix_rd prd;
+	struct bgp_dest *pdest;
+	struct bgp_dest *dest;
+	struct bgp_table *table;
+	struct bgp_static *bgp_static;
+	mpls_label_t label = MPLS_INVALID_LABEL;
+	struct prefix gw_ip;
+
+	/* validate ip prefix */
+	ret = str2prefix(ip_str, &p);
+	if (!ret) {
+		vty_out(vty, "%% Malformed prefix\n");
+		return CMD_WARNING_CONFIG_FAILED;
+	}
+	apply_mask(&p);
+	if ((afi == AFI_L2VPN)
+	    && (bgp_build_evpn_prefix(evpn_type,
+				      ethtag != NULL ? atol(ethtag) : 0, &p))) {
+		vty_out(vty, "%% L2VPN prefix could not be forged\n");
+		return CMD_WARNING_CONFIG_FAILED;
+	}
+
+	if (safi == SAFI_RTC) {
+		//struct prefix_rtc prtc;
+		str2prefix_rtc(rd_str, (struct prefix_rtc *) &p);
+		char *pnt;
+		
+		// Remove prefix length specifier to make it parseable by str2prefix_rd
+		pnt = strchr(rd_str, '/');
+		*pnt = '\0';
+	}
+
+	ret = str2prefix_rd(rd_str, &prd);
+	if (!ret) {
+		vty_out(vty, "%% Malformed rd\n");
+		return CMD_WARNING_CONFIG_FAILED;
+	}
+
+	if (label_str) {
+		unsigned long label_val;
+		label_val = strtoul(label_str, NULL, 10);
+		encode_label(label_val, &label);
+	}
+
+	if (safi == SAFI_EVPN) {
+		if (esi && str2esi(esi, NULL) == 0) {
+			vty_out(vty, "%% Malformed ESI\n");
+			return CMD_WARNING_CONFIG_FAILED;
+		}
+		if (routermac && prefix_str2mac(routermac, NULL) == 0) {
+			vty_out(vty, "%% Malformed Router MAC\n");
+			return CMD_WARNING_CONFIG_FAILED;
+		}
+		if (gwip) {
+			memset(&gw_ip, 0, sizeof(gw_ip));
+			ret = str2prefix(gwip, &gw_ip);
+			if (!ret) {
+				vty_out(vty, "%% Malformed GatewayIp\n");
+				return CMD_WARNING_CONFIG_FAILED;
+			}
+			if ((gw_ip.family == AF_INET
+			     && is_evpn_prefix_ipaddr_v6(
+					(struct prefix_evpn *)&p))
+			    || (gw_ip.family == AF_INET6
+				&& is_evpn_prefix_ipaddr_v4(
+					   (struct prefix_evpn *)&p))) {
+				vty_out(vty,
+					"%% GatewayIp family differs with IP prefix\n");
+				return CMD_WARNING_CONFIG_FAILED;
+			}
+		}
+	}
+	pdest = bgp_node_get(bgp->route[afi][safi], (struct prefix *)&prd);
+	if (!bgp_dest_has_bgp_path_info_data(pdest))
+		bgp_dest_set_bgp_table_info(pdest,
+					    bgp_table_init(bgp, afi, safi));
+	table = bgp_dest_get_bgp_table_info(pdest);
+
+	dest = bgp_node_get(table, &p);
+
+	if (bgp_dest_has_bgp_path_info_data(dest)) {
+		vty_out(vty, "%% Same network configuration exists\n");
+		bgp_dest_unlock_node(dest);
+	} else {
+		/* New configuration. */
+		bgp_static = bgp_static_new();
+		bgp_static->backdoor = 0;
+		bgp_static->valid = 0;
+		bgp_static->igpmetric = 0;
+		bgp_static->igpnexthop.s_addr = INADDR_ANY;
+		bgp_static->label = label;
+		bgp_static->prd = prd;
+
+		bgp_static->prd_pretty = XSTRDUP(MTYPE_BGP, rd_str);
+
+		if (rmap_str) {
+			XFREE(MTYPE_ROUTE_MAP_NAME, bgp_static->rmap.name);
+			route_map_counter_decrement(bgp_static->rmap.map);
+			bgp_static->rmap.name =
+				XSTRDUP(MTYPE_ROUTE_MAP_NAME, rmap_str);
+			bgp_static->rmap.map =
+				route_map_lookup_by_name(rmap_str);
+			route_map_counter_increment(bgp_static->rmap.map);
+		}
+
+		if (safi == SAFI_EVPN) {
+			if (esi) {
+				bgp_static->eth_s_id =
+					XCALLOC(MTYPE_ATTR,
+						sizeof(esi_t));
+				str2esi(esi, bgp_static->eth_s_id);
+			}
+			if (routermac) {
+				bgp_static->router_mac =
+					XCALLOC(MTYPE_ATTR, ETH_ALEN + 1);
+				(void)prefix_str2mac(routermac,
+						     bgp_static->router_mac);
+			}
+			if (gwip)
+				prefix_copy(&bgp_static->gatewayIp, &gw_ip);
+		}
+		bgp_dest_set_bgp_static_info(dest, bgp_static);
+
+		bgp_static->valid = 1;
+		bgp_static_update(bgp, &p, bgp_static, afi, safi);
+	}
+
+	return CMD_SUCCESS;
+}
+
+/* Configure static BGP network. */
+int bgp_static_unset_safi(afi_t afi, safi_t safi, struct vty *vty,
+			  const char *ip_str, const char *rd_str,
+			  const char *label_str, int evpn_type, const char *esi,
+			  const char *gwip, const char *ethtag)
+{
+	VTY_DECLVAR_CONTEXT(bgp, bgp);
+	int ret;
+	struct prefix p;
+	struct prefix_rd prd;
+	struct bgp_dest *pdest;
+	struct bgp_dest *dest;
+	struct bgp_table *table;
+	struct bgp_static *bgp_static;
+	mpls_label_t label = MPLS_INVALID_LABEL;
+
+	/* Convert IP prefix string to struct prefix. */
+	ret = str2prefix(ip_str, &p);
+	if (!ret) {
+		vty_out(vty, "%% Malformed prefix\n");
+		return CMD_WARNING_CONFIG_FAILED;
+	}
+	apply_mask(&p);
+
+	if (safi == SAFI_RTC) {
+		//struct prefix_rtc prtc;
+		str2prefix_rtc(rd_str, (struct prefix_rtc *) &p);
+		char *pnt;
+		
+		// Remove prefix length specifier to make it parseable by str2prefix_rd
+		pnt = strchr(rd_str, '/');
+		*pnt = '\0';
+	}
+	if ((afi == AFI_L2VPN)
+	    && (bgp_build_evpn_prefix(evpn_type,
+				      ethtag != NULL ? atol(ethtag) : 0, &p))) {
+		vty_out(vty, "%% L2VPN prefix could not be forged\n");
+		return CMD_WARNING_CONFIG_FAILED;
+	}
+	ret = str2prefix_rd(rd_str, &prd);
+	if (!ret) {
+		vty_out(vty, "%% Malformed rd\n");
+		return CMD_WARNING_CONFIG_FAILED;
+	}
+
+	if (label_str) {
+		unsigned long label_val;
+		label_val = strtoul(label_str, NULL, 10);
+		encode_label(label_val, &label);
+	}
+
+	pdest = bgp_node_get(bgp->route[afi][safi], (struct prefix *)&prd);
+	if (!bgp_dest_has_bgp_path_info_data(pdest))
+		bgp_dest_set_bgp_table_info(pdest,
+					    bgp_table_init(bgp, afi, safi));
+	else
+		bgp_dest_unlock_node(pdest);
+	table = bgp_dest_get_bgp_table_info(pdest);
+
+	dest = bgp_node_lookup(table, &p);
+
+	if (dest) {
+		bgp_static_withdraw(bgp, &p, afi, safi, &prd);
+
+		bgp_static = bgp_dest_get_bgp_static_info(dest);
+		bgp_static_free(bgp_static);
+		bgp_dest_set_bgp_static_info(dest, NULL);
+		bgp_dest_unlock_node(dest);
+		bgp_dest_unlock_node(dest);
+	} else
+		vty_out(vty, "%% Can't find the route\n");
+
+	return CMD_SUCCESS;
+}
+
 static int bgp_table_map_set(struct vty *vty, afi_t afi, safi_t safi,
 			     const char *rmap_name)
 {
