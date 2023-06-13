@@ -2403,17 +2403,28 @@ bool subgroup_announce_check(struct bgp_dest *dest, struct bgp_path_info *pi,
 				type = *pnt++;
 
 				if (type == ECOMMUNITY_ENCODE_TRANS_EXP ||
-								type == ECOMMUNITY_ENCODE_AS || type == ECOMMUNITY_ENCODE_IP
-				    || type == ECOMMUNITY_ENCODE_AS4 ||
-					   type == ECOMMUNITY_EXTENDED_COMMUNITY_PART_2 ||
-					   type == ECOMMUNITY_EXTENDED_COMMUNITY_PART_3) {
+				    type == ECOMMUNITY_ENCODE_AS ||
+				    type == ECOMMUNITY_ENCODE_IP ||
+				    type == ECOMMUNITY_ENCODE_AS4 ||
+				    type == ECOMMUNITY_EXTENDED_COMMUNITY_PART_2 ||
+				    type == ECOMMUNITY_EXTENDED_COMMUNITY_PART_3) {
 					sub_type = *pnt++;
 
-					if (sub_type == ECOMMUNITY_ROUTE_TARGET) {
-						memcpy(&cmp.u.prefix_rtc.route_target, ecom->val, ECOMMUNITY_SIZE);
-						if (onlypeer->rtc_plist != NULL) {
-							if (prefix_list_apply_ext(onlypeer->rtc_plist, NULL, &cmp, true) == PREFIX_DENY){
-								zlog_info("Filtered update because of RTC prefix-list");
+					if (sub_type ==
+					    ECOMMUNITY_ROUTE_TARGET) {
+						memcpy(&cmp.u.prefix_rtc
+								.route_target,
+						       ecom->val,
+						       ECOMMUNITY_SIZE);
+						if (onlypeer->rtc_plist !=
+						    NULL) {
+							if (prefix_list_apply_ext(
+								    onlypeer->rtc_plist,
+								    NULL, &cmp,
+								    true) ==
+							    PREFIX_DENY) {
+								zlog_info(
+									"Filtered update because of RTC prefix-list");
 								return false;
 							}
 						}
@@ -7047,7 +7058,8 @@ void bgp_purge_static_redist_routes(struct bgp *bgp)
 }
 
 int str2prefix_rtc(const char *str, struct prefix_rtc *p);
-int str2prefix_rtc(const char *str, struct prefix_rtc *p) {
+int str2prefix_rtc(const char *str, struct prefix_rtc *p)
+{
 	struct ecommunity *ecom = NULL;
 	int ret = CMD_SUCCESS;
 	int plen;
@@ -7065,7 +7077,7 @@ int str2prefix_rtc(const char *str, struct prefix_rtc *p) {
 	if (pnt == NULL) {
 		ecom = ecommunity_str2com(str, ECOMMUNITY_ROUTE_TARGET, 0);
 		if (ecom == NULL) {
-		 	zlog_info("str2prefix_rtc: ecommunity_str2com failed");
+			zlog_info("str2prefix_rtc: ecommunity_str2com failed");
 			return 0;
 		}
 		zlog_info("str2prefix_rtc: ecommunity_str2com success");
@@ -7079,7 +7091,7 @@ int str2prefix_rtc(const char *str, struct prefix_rtc *p) {
 		ecom = ecommunity_str2com(cp, ECOMMUNITY_ROUTE_TARGET, 0);
 		if (ecom == NULL) {
 			XFREE(MTYPE_TMP, cp);
-		 	zlog_info("str2prefix_rtc: ecommunity_str2com failed");
+			zlog_info("str2prefix_rtc: ecommunity_str2com failed");
 			return 0;
 		}
 
@@ -7089,13 +7101,12 @@ int str2prefix_rtc(const char *str, struct prefix_rtc *p) {
 			return 0;
 
 		p->prefixlen = plen;
-		memcpy(&p->prefix.route_target, ecom->val, PSIZE(plen) -4);
+		memcpy(&p->prefix.route_target, ecom->val, PSIZE(plen) - 4);
 		XFREE(MTYPE_TMP, cp);
 		return ret;
 	}
 
 	return ret;
-
 }
 
 /*
@@ -7135,11 +7146,12 @@ int bgp_static_set_safi(afi_t afi, safi_t safi, struct vty *vty,
 	}
 
 	if (safi == SAFI_RTC) {
-		//struct prefix_rtc prtc;
-		str2prefix_rtc(rd_str, (struct prefix_rtc *) &p);
+		// struct prefix_rtc prtc;
+		str2prefix_rtc(rd_str, (struct prefix_rtc *)&p);
 		char *pnt;
-		
-		// Remove prefix length specifier to make it parseable by str2prefix_rd
+
+		// Remove prefix length specifier to make it parseable by
+		// str2prefix_rd
 		pnt = strchr(rd_str, '/');
 		*pnt = '\0';
 	}
@@ -7267,11 +7279,12 @@ int bgp_static_unset_safi(afi_t afi, safi_t safi, struct vty *vty,
 	apply_mask(&p);
 
 	if (safi == SAFI_RTC) {
-		//struct prefix_rtc prtc;
-		str2prefix_rtc(rd_str, (struct prefix_rtc *) &p);
+		// struct prefix_rtc prtc;
+		str2prefix_rtc(rd_str, (struct prefix_rtc *)&p);
 		char *pnt;
-		
-		// Remove prefix length specifier to make it parseable by str2prefix_rd
+
+		// Remove prefix length specifier to make it parseable by
+		// str2prefix_rd
 		pnt = strchr(rd_str, '/');
 		*pnt = '\0';
 	}
@@ -11927,11 +11940,11 @@ static int bgp_show_table(struct vty *vty, struct bgp *bgp, afi_t afi, safi_t sa
 }
 
 int bgp_show_table_rtc(struct vty *vty, struct bgp *bgp, safi_t safi,
-		      struct bgp_table *table, enum bgp_show_type type, void *output_arg,
-		      uint16_t show_flags);
+		       struct bgp_table *table, enum bgp_show_type type,
+		       void *output_arg, uint16_t show_flags);
 int bgp_show_table_rtc(struct vty *vty, struct bgp *bgp, safi_t safi,
-		      struct bgp_table *table, enum bgp_show_type type, void *output_arg,
-		      uint16_t show_flags)
+		       struct bgp_table *table, enum bgp_show_type type,
+		       void *output_arg, uint16_t show_flags)
 {
 	struct bgp_dest *dest, *next;
 	unsigned long output_cum = 0;
@@ -11952,19 +11965,22 @@ int bgp_show_table_rtc(struct vty *vty, struct bgp *bgp, safi_t safi,
 		itable = bgp_dest_get_bgp_table_info(dest);
 		if (itable != NULL) {
 
-			struct bgp_path_info *pi = bgp_dest_get_bgp_path_info(dest);
-			struct ecommunity *ecom = ecommunity_parse(local_p.u.prefix_rtc.route_target, 8, true);
-			char *ecomstr = ecommunity_ecom2str(ecom, ECOMMUNITY_FORMAT_DISPLAY, 0);
-			vty_out(vty, "Prefix: \n\tRoute Target: %s/%u\n\tOrigin-as: %u\n", ecomstr, local_p.prefixlen, local_p.u.prefix_rtc.origin_as);
-			route_vty_out_detail_header(vty, bgp,
-				 dest, &local_p,
-				 NULL,  AFI_IP,
-				 safi, NULL, false);
-			route_vty_out_detail(vty, bgp, dest,
-			  &local_p, pi,
-			  AFI_IP, safi,
-			  RPKI_NOT_BEING_USED,
-			  NULL);
+			struct bgp_path_info *pi =
+				bgp_dest_get_bgp_path_info(dest);
+			struct ecommunity *ecom = ecommunity_parse(
+				local_p.u.prefix_rtc.route_target, 8, true);
+			char *ecomstr = ecommunity_ecom2str(
+				ecom, ECOMMUNITY_FORMAT_DISPLAY, 0);
+			vty_out(vty,
+				"Prefix: \n\tRoute Target: %s/%u\n\tOrigin-as: %u\n",
+				ecomstr, local_p.prefixlen,
+				local_p.u.prefix_rtc.origin_as);
+			route_vty_out_detail_header(vty, bgp, dest, &local_p,
+						    NULL, AFI_IP, safi, NULL,
+						    false);
+			route_vty_out_detail(vty, bgp, dest, &local_p, pi,
+					     AFI_IP, safi, RPKI_NOT_BEING_USED,
+					     NULL);
 			if (next == NULL)
 				show_msg = false;
 		}
