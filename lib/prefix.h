@@ -190,7 +190,7 @@ struct prefix {
 		uint32_t val32[4];
 		uintptr_t ptr;
 		struct evpn_addr prefix_evpn; /* AF_EVPN */
-		struct rtc_info prefix_rtc; /* AF_RTC */
+		struct rtc_info prefix_rtc;   /* AF_RTC */
 		struct flowspec_prefix prefix_flowspec; /* AF_FLOWSPEC */
 	} u __attribute__((aligned(8)));
 };
@@ -304,23 +304,27 @@ struct prefix_sg {
 };
 
 union prefixptr {
-	prefixtype(prefixptr, struct prefix,      p)
-	prefixtype(prefixptr, struct prefix_ipv4, p4)
-	prefixtype(prefixptr, struct prefix_ipv6, p6)
-	prefixtype(prefixptr, struct prefix_evpn, evp)
-	prefixtype(prefixptr, struct prefix_fs,   fs)
-	prefixtype(prefixptr, struct prefix_rd,   rd)
-	prefixtype(prefixptr, struct prefix_rtc,  rtc)
+	prefixtype(prefixptr, struct prefix,
+		   p) prefixtype(prefixptr, struct prefix_ipv4, p4)
+		prefixtype(prefixptr, struct prefix_ipv6,
+			   p6) prefixtype(prefixptr, struct prefix_evpn, evp)
+			prefixtype(prefixptr, struct prefix_fs, fs)
+				prefixtype(prefixptr, struct prefix_rd, rd)
+					prefixtype(prefixptr, struct prefix_rtc,
+						   rtc)
 } TRANSPARENT_UNION;
 
 union prefixconstptr {
-	prefixtype(prefixconstptr, const struct prefix,      p)
-	prefixtype(prefixconstptr, const struct prefix_ipv4, p4)
-	prefixtype(prefixconstptr, const struct prefix_ipv6, p6)
-	prefixtype(prefixconstptr, const struct prefix_evpn, evp)
-	prefixtype(prefixconstptr, const struct prefix_fs,   fs)
-	prefixtype(prefixconstptr, const struct prefix_rd,   rd)
-	prefixtype(prefixconstptr, const struct prefix_rtc,  rtc)
+	prefixtype(prefixconstptr, const struct prefix,
+		   p) prefixtype(prefixconstptr, const struct prefix_ipv4, p4)
+		prefixtype(prefixconstptr, const struct prefix_ipv6, p6)
+			prefixtype(prefixconstptr, const struct prefix_evpn,
+				   evp) prefixtype(prefixconstptr,
+						   const struct prefix_fs, fs)
+				prefixtype(prefixconstptr,
+					   const struct prefix_rd, rd)
+					prefixtype(prefixconstptr,
+						   const struct prefix_rtc, rtc)
 } TRANSPARENT_UNION;
 
 #ifndef INET_ADDRSTRLEN
@@ -673,7 +677,7 @@ static inline bool ipv4_mcast_ssm(const struct in_addr *addr)
 #pragma FRR printfrr_ext "%pFX"  (struct prefix_evpn *)
 #pragma FRR printfrr_ext "%pFX"  (struct prefix_fs *)
 #pragma FRR printfrr_ext "%pRDP"  (struct prefix_rd *)
-#pragma FRR printfrr_ext "%pRTC"  (struct prefix_rtc *)
+#pragma FRR printfrr_ext "%pRTC"(struct prefix_rtc *)
 /* RD with AS4B with dot and dot+ format */
 #pragma FRR printfrr_ext "%pRDD"  (struct prefix_rd *)
 #pragma FRR printfrr_ext "%pRDE"  (struct prefix_rd *)
