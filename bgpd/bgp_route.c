@@ -11941,7 +11941,9 @@ int bgp_show_table_rtc(struct vty *vty, struct bgp *bgp, safi_t safi,
 	show_msg = (!use_json && type == bgp_show_type_normal);
 
 	for (dest = bgp_table_top(table); dest; dest = next) {
-		struct prefix *dest_p = bgp_dest_get_prefix(dest);
+		struct prefix local_p = {};
+		const struct prefix *dest_p = bgp_dest_get_prefix(dest);
+		local_p = *dest_p;
 
 		next = bgp_route_next(dest);
 
@@ -11949,15 +11951,15 @@ int bgp_show_table_rtc(struct vty *vty, struct bgp *bgp, safi_t safi,
 		if (itable != NULL) {
 
 			struct bgp_path_info *pi = bgp_dest_get_bgp_path_info(dest);
-			struct ecommunity *ecom = ecommunity_parse(dest_p->u.prefix_rtc.route_target, 8, true);
+			struct ecommunity *ecom = ecommunity_parse(local_p.u.prefix_rtc.route_target, 8, true);
 			char *ecomstr = ecommunity_ecom2str(ecom, ECOMMUNITY_FORMAT_DISPLAY, 0);
-			vty_out(vty, "Prefix: \n\tRoute Target: %s/%u\n\tOrigin-as: %u\n", ecomstr, dest_p->prefixlen, dest_p->u.prefix_rtc.origin_as);
+			vty_out(vty, "Prefix: \n\tRoute Target: %s/%u\n\tOrigin-as: %u\n", ecomstr, local_p.prefixlen, local_p.u.prefix_rtc.origin_as);
 			route_vty_out_detail_header(vty, bgp,
-				 dest, dest_p,
+				 dest, &local_p,
 				 NULL,  AFI_IP,
 				 safi, NULL, false);
 			route_vty_out_detail(vty, bgp, dest,
-			  dest_p, pi,
+			  &local_p, pi,
 			  AFI_IP, safi,
 			  RPKI_NOT_BEING_USED,
 			  NULL);
