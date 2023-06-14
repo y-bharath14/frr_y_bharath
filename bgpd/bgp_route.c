@@ -7047,17 +7047,6 @@ int bgp_static_set_safi(afi_t afi, safi_t safi, struct vty *vty,
 		return CMD_WARNING_CONFIG_FAILED;
 	}
 
-	if (safi == SAFI_RTC) {
-		// struct prefix_rtc prtc;
-		str2prefix_rtc(rd_str, (struct prefix_rtc *)&p);
-		char *pnt;
-
-		// Remove prefix length specifier to make it parseable by
-		// str2prefix_rd
-		pnt = strchr(rd_str, '/');
-		*pnt = '\0';
-	}
-
 	ret = str2prefix_rd(rd_str, &prd);
 	if (!ret) {
 		vty_out(vty, "%% Malformed rd\n");
@@ -7180,16 +7169,6 @@ int bgp_static_unset_safi(afi_t afi, safi_t safi, struct vty *vty,
 	}
 	apply_mask(&p);
 
-	if (safi == SAFI_RTC) {
-		// struct prefix_rtc prtc;
-		str2prefix_rtc(rd_str, (struct prefix_rtc *)&p);
-		char *pnt;
-
-		// Remove prefix length specifier to make it parseable by
-		// str2prefix_rd
-		pnt = strchr(rd_str, '/');
-		*pnt = '\0';
-	}
 	if ((afi == AFI_L2VPN)
 	    && (bgp_build_evpn_prefix(evpn_type,
 				      ethtag != NULL ? atol(ethtag) : 0, &p))) {
