@@ -2379,13 +2379,12 @@ bool subgroup_announce_check(struct bgp_dest *dest, struct bgp_path_info *pi,
 		return false;
 
 	/* RTC-Filtering */
-	if (afi == AFI_L2VPN && safi == SAFI_EVPN) {
-		if (peer->afc[AFI_IP][SAFI_RTC]) {
-			// The update group should only have one peer
-			onlypeer = SUBGRP_PFIRST(subgrp)->peer;
-			if (bgp_rtc_filter(onlypeer, attr))
-				return false;
-		}
+	if (afi == AFI_L2VPN && safi == SAFI_EVPN &&
+	    peer->afc[AFI_IP][SAFI_RTC]) {
+		/* The update group should only have one peer */
+		onlypeer = SUBGRP_PFIRST(subgrp)->peer;
+		if (bgp_rtc_filter(onlypeer, attr))
+			return false;
 	}
 	bgp_peer_remove_private_as(bgp, afi, safi, peer, attr);
 	bgp_peer_as_override(bgp, afi, safi, peer, attr);
@@ -7009,7 +7008,6 @@ void bgp_purge_static_redist_routes(struct bgp *bgp)
 	FOREACH_AFI_SAFI (afi, safi)
 		bgp_purge_af_static_redist_routes(bgp, afi, safi);
 }
-
 
 /*
  * gpz 110624
