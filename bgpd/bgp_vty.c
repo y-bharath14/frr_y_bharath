@@ -2798,7 +2798,6 @@ DEFUN (no_bgp_always_compare_med,
 	return CMD_SUCCESS;
 }
 
-
 DEFUN(bgp_ebgp_requires_policy, bgp_ebgp_requires_policy_cmd,
       "bgp ebgp-requires-policy",
       BGP_STR
@@ -2817,31 +2816,6 @@ DEFUN(no_bgp_ebgp_requires_policy, no_bgp_ebgp_requires_policy_cmd,
 {
 	VTY_DECLVAR_CONTEXT(bgp, bgp);
 	UNSET_FLAG(bgp->flags, BGP_FLAG_EBGP_REQUIRES_POLICY);
-	return CMD_SUCCESS;
-}
-
-DEFPY(bgp_lu_uses_explicit_null, bgp_lu_uses_explicit_null_cmd,
-      "[no] bgp labeled-unicast <explicit-null|ipv4-explicit-null|ipv6-explicit-null>$value",
-      NO_STR BGP_STR
-      "BGP Labeled-unicast options\n"
-      "Use explicit-null label values for all local prefixes\n"
-      "Use the IPv4 explicit-null label value for IPv4 local prefixes\n"
-      "Use the IPv6 explicit-null label value for IPv6 local prefixes\n")
-{
-	VTY_DECLVAR_CONTEXT(bgp, bgp);
-	uint64_t label_mode;
-
-	if (strmatch(value, "ipv4-explicit-null"))
-		label_mode = BGP_FLAG_LU_IPV4_EXPLICIT_NULL;
-	else if (strmatch(value, "ipv6-explicit-null"))
-		label_mode = BGP_FLAG_LU_IPV6_EXPLICIT_NULL;
-	else
-		label_mode = BGP_FLAG_LU_IPV4_EXPLICIT_NULL |
-			     BGP_FLAG_LU_IPV6_EXPLICIT_NULL;
-	if (no)
-		UNSET_FLAG(bgp->flags, label_mode);
-	else
-		SET_FLAG(bgp->flags, label_mode);
 	return CMD_SUCCESS;
 }
 
@@ -9883,6 +9857,38 @@ DEFPY(af_no_import_vrf_route_map, af_no_import_vrf_route_map_cmd,
 
 	return CMD_SUCCESS;
 }
+
+
+DEFPY(af_label_explicit_null, af_label_explicit_null_cmd,
+      "[no] label explicit-null",
+      NO_STR
+      "mpls label configuration option\n"
+      "Use explicit-null label values for all local prefixes\n")
+{
+	VTY_DECLVAR_CONTEXT(bgp, bgp);
+
+	if (no) {
+		if (CHECK_FLAG(bgp->af_flags[bgp_node_afi(vty)]
+					    [bgp_node_safi(vty)],
+			       BGP_LU_EXPLICIT_NULL)) {
+			UNSET_FLAG(bgp->af_flags[bgp_node_afi(vty)]
+						[bgp_node_safi(vty)],
+				   BGP_LU_EXPLICIT_NULL);
+			bgp_zebra_label_set_to_imp_null(bgp, bgp_node_afi(vty));
+		}
+	} else {
+		if (!CHECK_FLAG(bgp->af_flags[bgp_node_afi(vty)]
+					     [bgp_node_safi(vty)],
+				BGP_LU_EXPLICIT_NULL)) {
+			SET_FLAG(bgp->af_flags[bgp_node_afi(vty)]
+					      [bgp_node_safi(vty)],
+				 BGP_LU_EXPLICIT_NULL);
+			bgp_zebra_label_set_to_exp_null(bgp, bgp_node_afi(vty));
+		}
+	}
+	return CMD_SUCCESS;
+}
+
 
 DEFPY(bgp_imexport_vrf, bgp_imexport_vrf_cmd,
       "[no] import vrf VIEWVRFNAME$import_name",
@@ -18188,6 +18194,10 @@ static void bgp_config_write_family(struct vty *vty, struct bgp *bgp, afi_t afi,
 	if (CHECK_FLAG(bgp->af_flags[afi][safi], BGP_CONFIG_DAMPENING))
 		bgp_config_write_damp(vty, afi, safi);
 
+	/* BGP mpls null label type */
+	if (CHECK_FLAG(bgp->af_flags[afi][safi], BGP_LU_EXPLICIT_NULL))
+		vty_out(vty, "  label explicit-null\n");
+
 	for (ALL_LIST_ELEMENTS(bgp->group, node, nnode, group))
 		bgp_config_write_peer_af(vty, bgp, group->conf, afi, safi);
 
@@ -18335,18 +18345,6 @@ int bgp_config_write(struct vty *vty)
 					   BGP_FLAG_EBGP_REQUIRES_POLICY)
 					? ""
 					: "no ");
-
-		if (!!CHECK_FLAG(bgp->flags, BGP_FLAG_LU_IPV4_EXPLICIT_NULL) &&
-		    !!CHECK_FLAG(bgp->flags, BGP_FLAG_LU_IPV6_EXPLICIT_NULL))
-			vty_out(vty, " bgp labeled-unicast explicit-null\n");
-		else if (!!CHECK_FLAG(bgp->flags,
-				      BGP_FLAG_LU_IPV4_EXPLICIT_NULL))
-			vty_out(vty,
-				" bgp labeled-unicast ipv4-explicit-null\n");
-		else if (!!CHECK_FLAG(bgp->flags,
-				      BGP_FLAG_LU_IPV6_EXPLICIT_NULL))
-			vty_out(vty,
-				" bgp labeled-unicast ipv6-explicit-null\n");
 
 		/* draft-ietf-idr-deprecate-as-set-confed-set */
 		if (bgp->reject_as_sets)
@@ -19318,9 +19316,6 @@ void bgp_vty_init(void)
 	/* bgp ebgp-requires-policy */
 	install_element(BGP_NODE, &bgp_ebgp_requires_policy_cmd);
 	install_element(BGP_NODE, &no_bgp_ebgp_requires_policy_cmd);
-
-	/* bgp labeled-unicast explicit-null */
-	install_element(BGP_NODE, &bgp_lu_uses_explicit_null_cmd);
 
 	/* bgp suppress-duplicates */
 	install_element(BGP_NODE, &bgp_suppress_duplicates_cmd);
@@ -20650,6 +20645,9 @@ void bgp_vty_init(void)
 	install_element(BGP_IPV4_NODE, &af_no_import_vrf_route_map_cmd);
 	install_element(BGP_IPV6_NODE, &af_no_import_vrf_route_map_cmd);
 
+	/* mpls label commands */
+	install_element(BGP_IPV4L_NODE, &af_label_explicit_null_cmd);
+	install_element(BGP_IPV6L_NODE, &af_label_explicit_null_cmd);
 	/* tcp-mss command */
 	install_element(BGP_NODE, &neighbor_tcp_mss_cmd);
 	install_element(BGP_NODE, &no_neighbor_tcp_mss_cmd);
