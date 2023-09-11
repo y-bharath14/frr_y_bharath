@@ -1852,6 +1852,180 @@ static int unpack_item_prefix_sid(uint16_t mtid, uint8_t len, struct stream *s,
 	return 0;
 }
 
+static struct isis_item *copy_item_flex_algo_prefix_metric(struct isis_item *i)
+{
+	struct isis_flex_algo_prefix_metric *pm =
+		(struct isis_flex_algo_prefix_metric *)i;
+	struct isis_flex_algo_prefix_metric *rv =
+		XCALLOC(MTYPE_ISIS_SUBTLV, sizeof(*rv));
+
+	rv->algorithm = pm->algorithm;
+	rv->metric = pm->metric;
+	return (struct isis_item *)rv;
+}
+
+static void format_item_flex_algo_prefix_metric(uint16_t mtid,
+						struct isis_item *i,
+						struct sbuf *buf,
+						struct json_object *json,
+						int indent)
+{
+	struct isis_flex_algo_prefix_metric *pm =
+		(struct isis_flex_algo_prefix_metric *)i;
+
+	if (json)
+		/* No JSON support */
+		return;
+
+	sbuf_push(buf, indent, "Flex Algo Prefix-Metric ");
+	sbuf_push(buf, 0, "Algorithm: %hhu, Metric: %u\n", pm->algorithm,
+		  pm->metric);
+}
+
+static void free_item_flex_algo_prefix_metric(struct isis_item *i)
+{
+	XFREE(MTYPE_ISIS_SUBTLV, i);
+}
+
+static int pack_item_flex_algo_prefix_metric(struct isis_item *i,
+					     struct stream *s, size_t *min_len)
+{
+	struct isis_flex_algo_prefix_metric *pm =
+		(struct isis_flex_algo_prefix_metric *)i;
+
+	if (STREAM_WRITEABLE(s) < ISIS_SUBTLV_FAPM_SIZE) {
+		*min_len = ISIS_SUBTLV_FAPM_SIZE;
+		return 1;
+	}
+
+	stream_putc(s, pm->algorithm);
+
+	stream_putl(s, pm->metric);
+
+	return 0;
+}
+
+static int unpack_item_flex_algo_prefix_metric(uint16_t mtid, uint8_t len,
+					       struct stream *s,
+					       struct sbuf *log, void *dest,
+					       int indent)
+{
+	struct isis_subtlvs *subtlvs = dest;
+	struct isis_flex_algo_prefix_metric pm = {};
+
+	sbuf_push(log, indent, "Unpacking Flex Algo Prefix-Metric...\n");
+
+	if (len < ISIS_SUBTLV_FAPM_SIZE) {
+		sbuf_push(
+			log, indent,
+			"Not enough data left. (expected %u or more bytes, got %hhu)\n",
+			ISIS_SUBTLV_FAPM_SIZE, len);
+		return 1;
+	}
+
+	pm.algorithm = stream_getc(s);
+
+	if (len != ISIS_SUBTLV_FAPM_SIZE) {
+		sbuf_push(
+			log, indent,
+			"TLV size differs from expected size. (expected %u but got %hhu)\n",
+			ISIS_SUBTLV_FAPM_SIZE, len);
+		return 1;
+	}
+
+	pm.metric = stream_getl(s);
+
+	format_item_flex_algo_prefix_metric(mtid, (struct isis_item *)&pm, log,
+					    NULL, indent + 2);
+	append_item(&subtlvs->flex_algo_prefix_metrics,
+		    copy_item_flex_algo_prefix_metric((struct isis_item *)&pm));
+	return 0;
+}
+
+
+static struct isis_item *copy_item_prefix_attr_flags(struct isis_item *i)
+{
+	struct isis_prefix_attr_flags *paf = (struct isis_prefix_attr_flags *)i;
+	struct isis_prefix_attr_flags *rv =
+		XCALLOC(MTYPE_ISIS_SUBTLV, sizeof(*rv));
+
+	rv->flags = paf->flags;
+	return (struct isis_item *)rv;
+}
+
+static void format_item_prefix_attr_flags(uint16_t mtid, struct isis_item *i,
+					  struct sbuf *buf,
+					  struct json_object *json, int indent)
+{
+	struct isis_prefix_attr_flags *paf = (struct isis_prefix_attr_flags *)i;
+
+	if (json)
+		/* no JSON support */
+		return;
+
+	sbuf_push(buf, indent, "Prefix attribute flags: 0x%x", paf->flags);
+	if (CHECK_FLAG(paf->flags, ISIS_PREFIX_ATTR_FLAG_X))
+		sbuf_push(buf, 1, "External (X): %d",
+			  CHECK_FLAG(paf->flags, ISIS_PREFIX_ATTR_FLAG_X) ? 1
+									  : 0);
+	if (CHECK_FLAG(paf->flags, ISIS_PREFIX_ATTR_FLAG_R))
+		sbuf_push(buf, 1, "Re-advertisement (R): %d",
+			  CHECK_FLAG(paf->flags, ISIS_PREFIX_ATTR_FLAG_R) ? 1
+									  : 0);
+	if (CHECK_FLAG(paf->flags, ISIS_PREFIX_ATTR_FLAG_N))
+		sbuf_push(buf, 1, "Node (N): %d",
+			  CHECK_FLAG(paf->flags, ISIS_PREFIX_ATTR_FLAG_N) ? 1
+									  : 0);
+	sbuf_push(buf, 0, "\n");
+}
+
+static void free_item_prefix_attr_flags(struct isis_item *i)
+{
+	XFREE(MTYPE_ISIS_SUBTLV, i);
+}
+
+static int pack_item_prefix_attr_flags(struct isis_item *i, struct stream *s,
+				       size_t *min_len)
+{
+	struct isis_prefix_attr_flags *paf = (struct isis_prefix_attr_flags *)i;
+	uint8_t size = ISIS_SUBTLV_PREFIX_ATTR_FLAGS_SIZE;
+
+	if (STREAM_WRITEABLE(s) < size) {
+		*min_len = size;
+		return 1;
+	}
+
+	stream_putc(s, paf->flags);
+
+	return 0;
+}
+
+static int unpack_item_prefix_attr_flags(uint16_t mtid, uint8_t len,
+					 struct stream *s, struct sbuf *log,
+					 void *dest, int indent)
+{
+	struct isis_subtlvs *subtlvs = dest;
+	struct isis_prefix_attr_flags paf = {};
+
+	sbuf_push(log, indent, "Unpacking Prefix attribute flags...\n");
+
+	if (len < ISIS_SUBTLV_PREFIX_ATTR_FLAGS_SIZE) {
+		sbuf_push(
+			log, indent,
+			"Not enough data left. (expected %d byte, got %hhu)\n",
+			ISIS_SUBTLV_PREFIX_ATTR_FLAGS_SIZE, len);
+		return 1;
+	}
+
+	paf.flags = stream_getc(s);
+
+	format_item_prefix_attr_flags(mtid, (struct isis_item *)&paf, log, NULL,
+				      indent + 2);
+	append_item(&subtlvs->prefix_attr_flags,
+		    copy_item_prefix_attr_flags((struct isis_item *)&paf));
+	return 0;
+}
+
 /* Functions for Sub-TVL ??? IPv6 Source Prefix */
 
 static struct prefix_ipv6 *copy_subtlv_ipv6_source_prefix(struct prefix_ipv6 *p)
@@ -1981,6 +2155,10 @@ static struct isis_subtlvs *isis_alloc_subtlvs(enum isis_tlv_context context)
 
 	init_item_list(&result->prefix_sids);
 
+	init_item_list(&result->prefix_attr_flags);
+
+	init_item_list(&result->flex_algo_prefix_metrics);
+
 	return result;
 }
 
@@ -1996,6 +2174,13 @@ static struct isis_subtlvs *copy_subtlvs(struct isis_subtlvs *subtlvs)
 	copy_items(subtlvs->context, ISIS_SUBTLV_PREFIX_SID,
 		   &subtlvs->prefix_sids, &rv->prefix_sids);
 
+	copy_items(subtlvs->context, ISIS_SUBTLV_PREFIX_ATTR_FLAGS,
+		   &subtlvs->prefix_attr_flags, &rv->prefix_attr_flags);
+
+	copy_items(subtlvs->context, ISIS_SUBTLV_FAPM,
+		   &subtlvs->flex_algo_prefix_metrics,
+		   &rv->flex_algo_prefix_metrics);
+
 	rv->source_prefix =
 		copy_subtlv_ipv6_source_prefix(subtlvs->source_prefix);
 	return rv;
@@ -2007,6 +2192,12 @@ static void format_subtlvs(struct isis_subtlvs *subtlvs, struct sbuf *buf,
 	format_items(subtlvs->context, ISIS_SUBTLV_PREFIX_SID,
 		     &subtlvs->prefix_sids, buf, json, indent);
 
+	format_items(subtlvs->context, ISIS_SUBTLV_PREFIX_ATTR_FLAGS,
+		     &subtlvs->prefix_attr_flags, buf, json, indent);
+
+	format_items(subtlvs->context, ISIS_SUBTLV_FAPM,
+		     &subtlvs->flex_algo_prefix_metrics, buf, json, indent);
+
 	format_subtlv_ipv6_source_prefix(subtlvs->source_prefix, buf, json, indent);
 }
 
@@ -2017,6 +2208,12 @@ static void isis_free_subtlvs(struct isis_subtlvs *subtlvs)
 
 	free_items(subtlvs->context, ISIS_SUBTLV_PREFIX_SID,
 		   &subtlvs->prefix_sids);
+
+	free_items(subtlvs->context, ISIS_SUBTLV_PREFIX_ATTR_FLAGS,
+		   &subtlvs->prefix_attr_flags);
+
+	free_items(subtlvs->context, ISIS_SUBTLV_FAPM,
+		   &subtlvs->flex_algo_prefix_metrics);
 
 	XFREE(MTYPE_ISIS_SUBTLV, subtlvs->source_prefix);
 
@@ -2035,6 +2232,17 @@ static int pack_subtlvs(struct isis_subtlvs *subtlvs, struct stream *s)
 
 	rv = pack_items(subtlvs->context, ISIS_SUBTLV_PREFIX_SID,
 			&subtlvs->prefix_sids, s, NULL, NULL, NULL, NULL);
+	if (rv)
+		return rv;
+
+	rv = pack_items(subtlvs->context, ISIS_SUBTLV_PREFIX_ATTR_FLAGS,
+			&subtlvs->prefix_attr_flags, s, NULL, NULL, NULL, NULL);
+	if (rv)
+		return rv;
+
+	rv = pack_items(subtlvs->context, ISIS_SUBTLV_FAPM,
+			&subtlvs->flex_algo_prefix_metrics, s, NULL, NULL, NULL,
+			NULL);
 	if (rv)
 		return rv;
 
@@ -5070,6 +5278,15 @@ top:
 			break;
 		}
 
+		/* Multiple prefix-sids don't go into one TLV, so always break
+		 */
+		if (type == ISIS_SUBTLV_FAPM &&
+		    (context == ISIS_CONTEXT_SUBTLV_IP_REACH ||
+		     context == ISIS_CONTEXT_SUBTLV_IPV6_REACH)) {
+			item = item->next;
+			break;
+		}
+
 		if (len > 255) {
 			if (!last_len) /* strange, not a single item fit */
 				return 1;
@@ -6005,6 +6222,8 @@ ITEM_TLV_OPS(ipv6_reach, "TLV 236 IPv6 Reachability");
 TLV_OPS(router_cap, "TLV 242 Router Capability");
 
 ITEM_SUBTLV_OPS(prefix_sid, "Sub-TLV 3 SR Prefix-SID");
+ITEM_SUBTLV_OPS(prefix_attr_flags, "Sub-TLV 4 Prefix Attribute Flags");
+ITEM_SUBTLV_OPS(flex_algo_prefix_metric, "Sub-TLV 6 Flex-Algo Prefix Metric");
 SUBTLV_OPS(ipv6_source_prefix, "Sub-TLV 22 IPv6 Source Prefix");
 
 static const struct tlv_ops *const tlv_table[ISIS_CONTEXT_MAX][ISIS_TLV_MAX] = {
@@ -6038,10 +6257,14 @@ static const struct tlv_ops *const tlv_table[ISIS_CONTEXT_MAX][ISIS_TLV_MAX] = {
 	[ISIS_CONTEXT_SUBTLV_NE_REACH] = {},
 	[ISIS_CONTEXT_SUBTLV_IP_REACH] = {
 		[ISIS_SUBTLV_PREFIX_SID] = &tlv_prefix_sid_ops,
+		[ISIS_SUBTLV_PREFIX_ATTR_FLAGS] = &tlv_prefix_attr_flags_ops,
+		[ISIS_SUBTLV_FAPM] = &tlv_flex_algo_prefix_metric_ops,
 	},
 	[ISIS_CONTEXT_SUBTLV_IPV6_REACH] = {
 		[ISIS_SUBTLV_PREFIX_SID] = &tlv_prefix_sid_ops,
+		[ISIS_SUBTLV_PREFIX_ATTR_FLAGS] = &tlv_prefix_attr_flags_ops,
 		[ISIS_SUBTLV_IPV6_SOURCE_PREFIX] = &subtlv_ipv6_source_prefix_ops,
+		[ISIS_SUBTLV_FAPM] = &tlv_flex_algo_prefix_metric_ops,
 	}
 };
 
@@ -6759,12 +6982,47 @@ void isis_tlvs_free_asla(struct isis_ext_subtlvs *ext, uint8_t standard_apps)
 	}
 }
 
+static void isis_tlvs_add_flex_algo_prefix_metric(struct isis_subtlvs *subtlvs,
+						  struct sr_prefix_cfg **pcfgs,
+						  uint32_t metric)
+{
+	struct isis_flex_algo_prefix_metric *fapm;
+	int i;
+
+	for (i = 0; i < SR_ALGORITHM_COUNT; i++) {
+		if (!pcfgs[i])
+			continue;
+		if (!flex_algo_id_valid(i))
+			continue;
+		fapm = XCALLOC(MTYPE_ISIS_SUBTLV, sizeof(*fapm));
+		fapm->algorithm = i;
+		fapm->metric = metric;
+		append_item(&subtlvs->flex_algo_prefix_metrics,
+			    (struct isis_item *)fapm);
+	}
+}
+
+
+static void isis_tlvs_add_prefix_attr_flags(struct isis_subtlvs *subtlvs,
+					    bool node, bool external)
+{
+	struct isis_prefix_attr_flags *paf;
+
+	paf = XCALLOC(MTYPE_ISIS_SUBTLV, sizeof(*paf));
+	if (node)
+		SET_FLAG(paf->flags, ISIS_PREFIX_ATTR_FLAG_N);
+	if (external)
+		SET_FLAG(paf->flags, ISIS_PREFIX_ATTR_FLAG_X);
+	append_item(&subtlvs->prefix_attr_flags, (struct isis_item *)paf);
+}
+
 void isis_tlvs_add_extended_ip_reach(struct isis_tlvs *tlvs,
 				     struct prefix_ipv4 *dest, uint32_t metric,
 				     bool external,
 				     struct sr_prefix_cfg **pcfgs)
 {
 	struct isis_extended_ip_reach *r = XCALLOC(MTYPE_ISIS_TLV, sizeof(*r));
+	bool node = false;
 
 	r->metric = metric;
 	memcpy(&r->prefix, dest, sizeof(*dest));
@@ -6783,7 +7041,18 @@ void isis_tlvs_add_extended_ip_reach(struct isis_tlvs *tlvs,
 			isis_sr_prefix_cfg2subtlv(pcfg, external, psid);
 			append_item(&r->subtlvs->prefix_sids,
 				    (struct isis_item *)psid);
+
+			if (!node && pcfg->node_sid)
+				node = true;
 		}
+
+		if (node || external)
+			isis_tlvs_add_prefix_attr_flags(r->subtlvs, node,
+							external);
+
+		if (external)
+			isis_tlvs_add_flex_algo_prefix_metric(r->subtlvs, pcfgs,
+							      metric);
 	}
 
 	append_item(&tlvs->extended_ip_reach, (struct isis_item *)r);
@@ -6794,6 +7063,7 @@ void isis_tlvs_add_ipv6_reach(struct isis_tlvs *tlvs, uint16_t mtid,
 			      bool external, struct sr_prefix_cfg **pcfgs)
 {
 	struct isis_ipv6_reach *r = XCALLOC(MTYPE_ISIS_TLV, sizeof(*r));
+	bool node = false;
 
 	r->metric = metric;
 	memcpy(&r->prefix, dest, sizeof(*dest));
@@ -6811,7 +7081,18 @@ void isis_tlvs_add_ipv6_reach(struct isis_tlvs *tlvs, uint16_t mtid,
 			isis_sr_prefix_cfg2subtlv(pcfg, external, psid);
 			append_item(&r->subtlvs->prefix_sids,
 				    (struct isis_item *)psid);
+
+			if (!node && pcfg->node_sid)
+				node = true;
 		}
+
+		if (node || external)
+			isis_tlvs_add_prefix_attr_flags(r->subtlvs, node,
+							external);
+
+		if (external)
+			isis_tlvs_add_flex_algo_prefix_metric(r->subtlvs, pcfgs,
+							      metric);
 	}
 
 	struct isis_item_list *l;
@@ -6934,3 +7215,35 @@ void isis_tlvs_set_purge_originator(struct isis_tlvs *tlvs,
 		       sizeof(tlvs->purge_originator->sender));
 	}
 }
+
+#ifndef FABRICD
+bool isis_is_prefix_attr_redist_ext(struct isis_subtlvs *subtlvs, int algo)
+{
+	struct isis_prefix_attr_flags *paf;
+	struct isis_prefix_sid *psid;
+
+	if (!subtlvs)
+		return false;
+
+	for (psid = (struct isis_prefix_sid *)subtlvs->prefix_sids.head; psid;
+	     psid = psid->next) {
+		if (psid->algorithm != algo)
+			continue;
+
+		if (CHECK_FLAG(psid->flags, ISIS_PREFIX_SID_READVERTISED))
+			return true;
+	}
+
+	paf = (struct isis_prefix_attr_flags *)subtlvs->prefix_attr_flags.head;
+
+	if (paf) {
+		if (CHECK_FLAG(paf->flags, ISIS_PREFIX_ATTR_FLAG_X))
+			return true;
+
+		if (CHECK_FLAG(paf->flags, ISIS_PREFIX_ATTR_FLAG_R))
+			return true;
+	}
+
+	return false;
+}
+#endif /* ifndef FABRICD */
