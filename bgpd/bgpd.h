@@ -506,18 +506,19 @@ struct bgp {
 #define BGP_FLAG_SHUTDOWN (1ULL << 25)
 #define BGP_FLAG_SUPPRESS_FIB_PENDING (1ULL << 26)
 #define BGP_FLAG_SUPPRESS_DUPLICATES (1ULL << 27)
-#define BGP_FLAG_PEERTYPE_MULTIPATH_RELAX (1ULL << 29)
+#define BGP_FLAG_PEERTYPE_MULTIPATH_RELAX (1ULL << 28)
 /* Indicate Graceful Restart support for BGP NOTIFICATION messages */
-#define BGP_FLAG_GRACEFUL_NOTIFICATION (1ULL << 30)
+#define BGP_FLAG_GRACEFUL_NOTIFICATION (1ULL << 29)
 /* Send Hard Reset CEASE Notification for 'Administrative Reset' */
-#define BGP_FLAG_HARD_ADMIN_RESET (1ULL << 31)
+#define BGP_FLAG_HARD_ADMIN_RESET (1ULL << 30)
 /* Evaluate the AIGP attribute during the best path selection process */
-#define BGP_FLAG_COMPARE_AIGP (1ULL << 32)
+#define BGP_FLAG_COMPARE_AIGP (1ULL << 31)
 /* For BGP-LU, force IPv4 local prefixes to use ipv4-explicit-null label */
-#define BGP_FLAG_LU_IPV4_EXPLICIT_NULL (1ULL << 33)
+#define BGP_FLAG_LU_IPV4_EXPLICIT_NULL (1ULL << 32)
 /* For BGP-LU, force IPv6 local prefixes to use ipv6-explicit-null label */
-#define BGP_FLAG_LU_IPV6_EXPLICIT_NULL (1ULL << 34)
-#define BGP_FLAG_SOFT_VERSION_CAPABILITY (1ULL << 35)
+#define BGP_FLAG_LU_IPV6_EXPLICIT_NULL (1ULL << 33)
+#define BGP_FLAG_SOFT_VERSION_CAPABILITY (1ULL << 34)
+#define BGP_FLAG_INSTANCE_HIDDEN	 (1ULL << 35)
 
 	/* BGP default address-families.
 	 * New peers inherit enabled afi/safis from bgp instance.
@@ -2089,6 +2090,7 @@ enum bgp_clear_type {
 enum bgp_create_error_code {
 	BGP_SUCCESS = 0,
 	BGP_CREATED = 1,
+	BGP_INSTANCE_EXISTS = 2,
 	BGP_ERR_INVALID_VALUE = -1,
 	BGP_ERR_INVALID_FLAG = -2,
 	BGP_ERR_INVALID_AS = -3,
@@ -2703,6 +2705,8 @@ extern struct peer *peer_new(struct bgp *bgp);
 extern struct peer *peer_lookup_in_view(struct vty *vty, struct bgp *bgp,
 					const char *ip_str, bool use_json);
 extern int bgp_lookup_by_as_name_type(struct bgp **bgp_val, as_t *as,
+				      const char *as_pretty,
+				      enum asnotation_mode asnotation,
 				      const char *name,
 				      enum bgp_instance_type inst_type);
 
@@ -2738,5 +2742,18 @@ extern bool bgp_path_attribute_treat_as_withdraw(struct peer *peer, char *buf,
 #pragma FRR printfrr_ext "%pBP" (struct peer *)
 /* clang-format on */
 #endif
+
+/* Macro to check if default bgp instance is hidden */
+#define IS_BGP_INSTANCE_HIDDEN(_bgp)                                           \
+	(CHECK_FLAG(_bgp->flags, BGP_FLAG_INSTANCE_HIDDEN) &&                  \
+	 (_bgp->inst_type == BGP_INSTANCE_TYPE_DEFAULT ||                      \
+	  _bgp->inst_type == BGP_INSTANCE_TYPE_VRF))
+
+/* Macro to check if bgp instance delete in-progress and !hidden */
+#define BGP_INSTANCE_HIDDEN_DELETE_IN_PROGRESS(_bgp, _afi, _safi)              \
+	(CHECK_FLAG(_bgp->flags, BGP_FLAG_DELETE_IN_PROGRESS) &&               \
+	 !IS_BGP_INSTANCE_HIDDEN(_bgp) &&                                      \
+	 !(_afi == AFI_IP && _safi == SAFI_MPLS_VPN) &&                        \
+	 !(_afi == AFI_IP6 && _safi == SAFI_MPLS_VPN))
 
 #endif /* _QUAGGA_BGPD_H */
