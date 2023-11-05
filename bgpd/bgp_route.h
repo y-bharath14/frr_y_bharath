@@ -769,6 +769,17 @@ extern int bgp_static_set(struct vty *vty, bool negate, const char *ip_str,
 			  uint32_t label_index, int evpn_type, const char *esi,
 			  const char *gwip, const char *ethtag,
 			  const char *routermac);
+extern int bgp_static_set_safi(afi_t afi, safi_t safi, struct vty *vty,
+			       const char *, const char *, const char *,
+			       const char *, int, const char *, const char *,
+			       const char *, const char *);
+
+extern struct bgp_static *bgp_static_new(void);
+extern void bgp_static_free(struct bgp_static *bgp_static);
+
+extern int bgp_static_unset_safi(afi_t afi, safi_t safi, struct vty *,
+				 const char *, const char *, const char *, int,
+				 const char *, const char *, const char *);
 
 /* this is primarily for MPLS-VPN */
 extern void bgp_update(struct peer *peer, const struct prefix *p,
@@ -782,6 +793,12 @@ extern void bgp_withdraw(struct peer *peer, const struct prefix *p,
 			 int sub_type, struct prefix_rd *prd,
 			 mpls_label_t *label, uint32_t num_labels,
 			 struct bgp_route_evpn *evpn);
+
+extern void bgp_static_update(struct bgp *bgp, const struct prefix *p,
+			      struct bgp_static *bgp_static, afi_t afi,
+			      safi_t safi);
+extern void bgp_static_withdraw(struct bgp *bgp, const struct prefix *p,
+				afi_t afi, safi_t safi, struct prefix_rd *prd);
 
 /* for bgp_nexthop and bgp_damp */
 extern void bgp_process(struct bgp *, struct bgp_dest *, afi_t, safi_t);
