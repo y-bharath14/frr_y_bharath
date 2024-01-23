@@ -59,6 +59,7 @@
 #include "bgpd/bgp_encap_types.h"
 #include "bgpd/bgp_mpath.h"
 #include "bgpd/bgp_script.h"
+#include "bgpd/bgp_tracker.h"
 
 #ifdef ENABLE_BGP_VNC
 #include "bgpd/rfapi/bgp_rfapi_cfg.h"
@@ -1480,6 +1481,72 @@ static const struct route_map_rule_cmd route_match_metric_cmd = {
 	route_match_metric,
 	route_value_compile,
 	route_value_free,
+};
+
+/* `match tracker NAME' */
+
+struct rmap_tracker {
+	char *name;
+	bool status;
+};
+
+/* Compile function for tracker match. */
+static void *route_match_tracker_compile(const char *arg)
+{
+	struct rmap_tracker *rtracker;
+	int len;
+	char *p;
+
+	rtracker =
+		XCALLOC(MTYPE_ROUTE_MAP_COMPILED, sizeof(struct rmap_tracker));
+
+	p = strchr(arg, ' ');
+	if (p) {
+		len = p - arg;
+		rtracker->name = XCALLOC(MTYPE_ROUTE_MAP_COMPILED, len + 1);
+		memcpy(rtracker->name, arg, len);
+		if (strstr(arg, "up") != NULL) /* arg contains "up" */
+			rtracker->status = true;
+		else
+			rtracker->status = false;
+	} else {
+		rtracker->name = XSTRDUP(MTYPE_ROUTE_MAP_COMPILED, arg);
+		rtracker->status = true;
+	}
+
+	return rtracker;
+}
+
+/* Compile function for tracker match. */
+static void route_match_tracker_free(void *rule)
+{
+	struct rmap_tracker *rtracker = rule;
+
+	XFREE(MTYPE_ROUTE_MAP_COMPILED, rtracker->name);
+	XFREE(MTYPE_ROUTE_MAP_COMPILED, rtracker);
+}
+
+/* Match function return 1 if match is success else return zero. */
+static enum route_map_cmd_result_t
+route_match_tracker(void *rule, const struct prefix *prefix, void *object)
+{
+	struct rmap_tracker *rtracker = rule;
+	struct tracker *tracker;
+
+	tracker = bgp_tracker_get(rtracker->name);
+
+	if (tracker && tracker->status == rtracker->status)
+		return RMAP_MATCH;
+
+	return RMAP_NOMATCH;
+}
+
+/* Route map commands for tracker matching. */
+static const struct route_map_rule_cmd route_match_tracker_cmd = {
+	"tracker",
+	route_match_tracker,
+	route_match_tracker_compile,
+	route_match_tracker_free,
 };
 
 /* `match as-path ASPATH' */
@@ -4695,7 +4762,7 @@ void bgp_route_map_update_timer(struct event *thread)
 	route_map_walk_update_list(bgp_route_map_process_update_cb);
 }
 
-static void bgp_route_map_mark_update(const char *rmap_name)
+static void bgp_route_map_mark_update_timer(const char *rmap_name, bool timer)
 {
 	struct listnode *node, *nnode;
 	struct bgp *bgp;
@@ -4706,9 +4773,9 @@ static void bgp_route_map_mark_update(const char *rmap_name)
 	EVENT_OFF(bm->t_rmap_update);
 
 	/* rmap_update_timer of 0 means don't do route updates */
-	if (bm->rmap_update_timer) {
+	if (bm->rmap_update_timer || !timer) {
 		event_add_timer(bm->master, bgp_route_map_update_timer, NULL,
-				bm->rmap_update_timer, &bm->t_rmap_update);
+				timer ? bm->rmap_update_timer : 0, &bm->t_rmap_update);
 
 		/* Signal the groups that a route-map update event has
 		 * started */
@@ -4725,6 +4792,11 @@ static void bgp_route_map_mark_update(const char *rmap_name)
 
 		vpn_policy_routemap_event(rmap_name);
 	}
+}
+
+static void bgp_route_map_mark_update(const char *rmap_name)
+{
+	bgp_route_map_mark_update_timer(rmap_name, true);
 }
 
 static void bgp_route_map_add(const char *rmap_name)
@@ -4767,6 +4839,43 @@ static void bgp_route_map_event(const char *rmap_name)
 		bgp_route_map_mark_update(rmap_name);
 
 	route_map_notify_dependencies(rmap_name, RMAP_EVENT_MATCH_ADDED);
+}
+
+static void _bgp_route_map_tracker_event(const char *rmap_name)
+{
+	if (route_map_mark_updated(rmap_name) == 0)
+		bgp_route_map_mark_update_timer(rmap_name, false);
+
+	route_map_notify_dependencies(rmap_name, RMAP_EVENT_MATCH_ADDED);
+}
+
+void bgp_route_map_tracker_event(const char *tracker_name)
+{
+	struct route_map_index *index;
+	struct route_map_rule *rule;
+	struct route_map *map;
+	bool found;
+
+	for (map = route_map_master.head; map; map = map->next) {
+		found = false;
+		for (index = map->head; index; index = index->next) {
+			for (rule = index->match_list.head; rule;
+			     rule = rule->next) {
+				if ((strncmp(rule->cmd->str, "tracker",
+					     strlen("tracker"))
+				     == 0)
+				    && (strncmp(rule->rule_str, tracker_name,
+						strlen(tracker_name))
+					== 0)) {
+					_bgp_route_map_tracker_event(map->name);
+					found = true;
+					break;
+				}
+			}
+			if (found)
+				break;
+		}
+	}
 }
 
 DEFUN_YANG (match_mac_address,
@@ -7799,6 +7908,9 @@ void bgp_route_map_init(void)
 	route_map_match_tag_hook(generic_match_add);
 	route_map_no_match_tag_hook(generic_match_delete);
 
+	route_map_match_tracker_hook(generic_match_add);
+	route_map_no_match_tracker_hook(generic_match_delete);
+
 	route_map_set_srte_color_hook(generic_set_add);
 	route_map_no_set_srte_color_hook(generic_set_delete);
 
@@ -7834,6 +7946,7 @@ void bgp_route_map_init(void)
 	route_map_install_match(&route_match_ecommunity_cmd);
 	route_map_install_match(&route_match_local_pref_cmd);
 	route_map_install_match(&route_match_metric_cmd);
+	route_map_install_match(&route_match_tracker_cmd);
 	route_map_install_match(&route_match_origin_cmd);
 	route_map_install_match(&route_match_probability_cmd);
 	route_map_install_match(&route_match_interface_cmd);

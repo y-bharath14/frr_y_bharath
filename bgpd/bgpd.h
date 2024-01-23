@@ -153,6 +153,9 @@ struct bgp_master {
 	/* EVPN multihoming */
 	struct bgp_evpn_mh_info *mh_info;
 
+	/* list of struct tracker */
+	struct list *trackers;
+
 	/* global update-delay timer values */
 	uint16_t v_update_delay;
 	uint16_t v_establish_wait;
@@ -2448,6 +2451,9 @@ extern void peer_tx_shutdown_message_unset(struct peer *);
 
 extern void bgp_route_map_update_timer(struct event *thread);
 extern const char *bgp_get_name_by_role(uint8_t role);
+
+extern void bgp_route_map_tracker_event(const char *rmap_name);
+
 extern enum asnotation_mode bgp_get_asnotation(struct bgp *bgp);
 
 extern void bgp_route_map_terminate(void);

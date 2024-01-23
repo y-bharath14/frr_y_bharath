@@ -250,6 +250,7 @@ DECLARE_QOBJ_TYPE(route_map);
 #define IS_MATCH_METRIC(C)                                                     \
 	(strmatch(C, "frr-route-map:match-metric"))
 #define IS_MATCH_TAG(C) (strmatch(C, "frr-route-map:match-tag"))
+#define IS_MATCH_TRACKER(C) (strmatch(C, "frr-route-map:match-tracker"))
 /* Zebra route-map match conditions */
 #define IS_MATCH_IPv4_PREFIX_LEN(C)                                            \
 	(strmatch(C, "frr-zebra-route-map:ipv4-prefix-length"))
@@ -654,6 +655,14 @@ extern void route_map_no_match_tag_hook(int (*func)(
 	struct route_map_index *index, const char *command,
 	const char *arg, route_map_event_t type,
 	char *errmsg, size_t errmsg_len));
+/* match tracker */
+extern void route_map_match_tracker_hook(int (*func)(
+	struct route_map_index *index, const char *command, const char *arg,
+	route_map_event_t type, char *errmsg, size_t errmsg_len));
+/* no match tracker */
+extern void route_map_no_match_tracker_hook(int (*func)(
+	struct route_map_index *index, const char *command, const char *arg,
+	route_map_event_t type, char *errmsg, size_t errmsg_len));
 /* set sr-te color */
 extern void route_map_set_srte_color_hook(
 	int (*func)(struct route_map_index *index,
@@ -907,6 +916,18 @@ struct route_map_match_set_hooks {
 			    const char *command, const char *arg,
 			    route_map_event_t type,
 			    char *errmsg, size_t errmsg_len);
+
+
+	/* match tracker */
+	int (*match_tracker)(struct route_map_index *index, const char *command,
+			     const char *arg, route_map_event_t type,
+			     char *errmsg, size_t errmsg_len);
+
+	/* no match tracker */
+	int (*no_match_tracker)(struct route_map_index *index,
+				const char *command, const char *arg,
+				route_map_event_t type, char *errmsg,
+				size_t errmsg_len);
 
 	/* set sr-te color */
 	int (*set_srte_color)(struct route_map_index *index,

@@ -52,6 +52,7 @@
 #include "zebra/zebra_opaque.h"
 #include "zebra/zebra_srte.h"
 #include "zebra/zebra_srv6.h"
+#include "zebra/zebra_tracker.h"
 
 DEFINE_MTYPE_STATIC(ZEBRA, RE_OPAQUE, "Route Opaque Data");
 
@@ -997,6 +998,44 @@ void zsend_nhrp_neighbor_notify(int cmd, struct interface *ifp,
 		stream_putw_at(s, 0, stream_get_endp(s));
 		zserv_send_message(client, s);
 	}
+}
+
+
+int zsend_tracker(int cmd, char *name, bool status, int proto)
+{
+	struct stream *s = stream_new(ZEBRA_MAX_PACKET_SIZ), *s_copy;
+	struct listnode *node;
+	struct zserv *client;
+	uint8_t name_len, i;
+	vrf_id_t vrf_id;
+
+	vrf_id = 0; /* vrf_id is not decoded by daemons */
+	zclient_create_header(s, cmd, vrf_id);
+	name_len = strlen(name);
+	stream_putc(s, name_len);
+	for (i = 0; i < name_len; i++)
+		stream_putc(s, name[i]);
+
+	stream_putc(s, status);
+
+	stream_putw_at(s, 0, stream_get_endp(s));
+
+	for (ALL_LIST_ELEMENTS_RO(zrouter.client_list, node, client)) {
+		/* only BGP uses tracker for now */
+		if (client->proto != ZEBRA_ROUTE_BGP)
+			continue;
+
+		if (proto != ZEBRA_ROUTE_ALL && client->proto != proto)
+			continue;
+
+		s_copy = stream_new(ZEBRA_MAX_PACKET_SIZ);
+		stream_copy(s_copy, s);
+		zserv_send_message(client, s_copy);
+	}
+
+	stream_free(s);
+
+	return 0;
 }
 
 
@@ -2415,6 +2454,7 @@ static void zread_hello(ZAPI_HANDLER_ARGS)
 		zsend_capabilities(client, zvrf);
 		zebra_vrf_update_all(client);
 	}
+	zebra_tracker_zsend_all(proto);
 stream_failure:
 	return;
 }
