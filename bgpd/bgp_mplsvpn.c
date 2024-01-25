@@ -1011,9 +1011,11 @@ static bool leak_update_nexthop_valid(struct bgp *to_bgp, struct bgp_dest *bn,
 {
 	struct bgp_path_info *bpi_ultimate;
 	struct bgp *bgp_nexthop;
+	struct bgp_table *table;
 	bool nh_valid;
 
 	bpi_ultimate = bgp_get_imported_bpi_ultimate(source_bpi);
+	table = bgp_dest_table(bpi_ultimate->net);
 
 	if (bpi->extra && bpi->extra->vrfleak && bpi->extra->vrfleak->bgp_orig)
 		bgp_nexthop = bpi->extra->vrfleak->bgp_orig;
@@ -1029,7 +1031,19 @@ static bool leak_update_nexthop_valid(struct bgp *to_bgp, struct bgp_dest *bn,
 	    is_pi_family_evpn(bpi_ultimate) ||
 	    CHECK_FLAG(bpi_ultimate->flags, BGP_PATH_ACCEPT_OWN))
 		nh_valid = true;
-	else
+	else if (bpi_ultimate->type == ZEBRA_ROUTE_BGP &&
+		 bpi_ultimate->sub_type == BGP_ROUTE_STATIC && table &&
+		 (table->safi == SAFI_UNICAST ||
+		  table->safi == SAFI_LABELED_UNICAST)) {
+		/* Routes from network statement */
+		if (CHECK_FLAG(bgp_nexthop->flags, BGP_FLAG_IMPORT_CHECK))
+			nh_valid = bgp_find_or_add_nexthop(to_bgp, bgp_nexthop,
+							   afi, SAFI_UNICAST,
+							   bpi_ultimate, NULL,
+							   0, p);
+		else
+			nh_valid = true;
+	} else
 		/*
 		 * TBD do we need to do anything about the
 		 * 'connected' parameter?
@@ -1188,6 +1202,7 @@ leak_update(struct bgp *to_bgp, struct bgp_dest *bn,
 		if (debug)
 			zlog_debug("%s: ->%s: %pBD Found route, changed attr",
 				   __func__, to_bgp->name_pretty, bn);
+		UNSET_FLAG(bpi->attr->nh_flag, BGP_ATTR_NH_REFRESH);
 
 		bgp_dest_unlock_node(bn);
 
@@ -2072,10 +2087,12 @@ static void vpn_leak_to_vrf_update_onevrf(struct bgp *to_bgp,   /* to */
 	uint32_t num_labels = 0;
 	int nexthop_self_flag = 1;
 	struct bgp_path_info *bpi_ultimate = NULL;
+	struct bgp_path_info *bpi;
 	int origin_local = 0;
 	struct bgp *src_vrf;
-	struct interface *ifp;
+	struct interface *ifp = NULL;
 	char rd_buf[RD_ADDRSTRLEN];
+
 	int debug = BGP_DEBUG(vpn, VPN_LEAK_TO_VRF);
 
 	if (!vpn_leak_from_vpn_active(to_bgp, afi, &debugmsg)) {
@@ -2161,6 +2178,20 @@ static void vpn_leak_to_vrf_update_onevrf(struct bgp *to_bgp,   /* to */
 
 	community_strip_accept_own(&static_attr);
 
+	bn = bgp_afi_node_get(to_bgp->rib[afi][safi], afi, safi, p, NULL);
+
+	for (bpi = bgp_dest_get_bgp_path_info(bn); bpi; bpi = bpi->next) {
+		if (bpi->extra && bpi->extra->vrfleak &&
+		    bpi->extra->vrfleak->parent == path_vpn)
+			break;
+	}
+
+	if (bpi && leak_update_nexthop_valid(to_bgp, bn, &static_attr, afi, safi,
+					     path_vpn, bpi, src_vrf, p, debug))
+		SET_FLAG(static_attr.nh_flag, BGP_ATTR_NH_VALID);
+	else
+		UNSET_FLAG(static_attr.nh_flag, BGP_ATTR_NH_VALID);
+
 	/*
 	 * Nexthop: stash and clear
 	 *
@@ -2176,12 +2207,22 @@ static void vpn_leak_to_vrf_update_onevrf(struct bgp *to_bgp,   /* to */
 	/* If the path has accept-own community and the source VRF
 	 * is valid, reset next-hop to self, to allow importing own
 	 * routes between different VRFs on the same node.
-	 * Set the nh ifindex to VRF's interface, not the real interface.
+	 */
+
+	if (src_bgp)
+		subgroup_announce_reset_nhop(nhfamily, &static_attr);
+
+	bpi_ultimate = bgp_get_imported_bpi_ultimate(path_vpn);
+
+	/* The nh ifindex may not be defined (when the route is
+	 * imported from the network statement => BGP_ROUTE_STATIC)
+	 * or to the real interface.
+	 * Rewrite the nh ifindex to VRF's interface.
 	 * Let the kernel to decide with double lookup the real next-hop
 	 * interface when installing the route.
 	 */
-	if (src_bgp) {
-		subgroup_announce_reset_nhop(nhfamily, &static_attr);
+	if (src_bgp || bpi_ultimate->sub_type == BGP_ROUTE_STATIC ||
+	    bpi_ultimate->sub_type == BGP_ROUTE_REDISTRIBUTE) {
 		ifp = if_get_vrf_loopback(src_vrf->vrf_id);
 		if (ifp)
 			static_attr.nh_ifindex = ifp->ifindex;
@@ -2216,6 +2257,15 @@ static void vpn_leak_to_vrf_update_onevrf(struct bgp *to_bgp,   /* to */
 		}
 		break;
 	}
+
+	if (!ifp && static_attr.nh_ifindex)
+		ifp = if_lookup_by_index(static_attr.nh_ifindex,
+					 src_vrf->vrf_id);
+
+	if (ifp && if_is_operative(ifp))
+		SET_FLAG(static_attr.nh_flag, BGP_ATTR_NH_IF_OPERSTATE);
+	else
+		UNSET_FLAG(static_attr.nh_flag, BGP_ATTR_NH_IF_OPERSTATE);
 
 	/*
 	 * route map handling
@@ -2253,8 +2303,6 @@ static void vpn_leak_to_vrf_update_onevrf(struct bgp *to_bgp,   /* to */
 	new_attr = bgp_attr_intern(&static_attr);
 	bgp_attr_flush(&static_attr);
 
-	bn = bgp_afi_node_get(to_bgp->rib[afi][safi], afi, safi, p, NULL);
-
 	/*
 	 * ensure labels are copied
 	 *
@@ -2269,9 +2317,6 @@ static void vpn_leak_to_vrf_update_onevrf(struct bgp *to_bgp,   /* to */
 	 */
 	if (!CHECK_FLAG(to_bgp->af_flags[afi][safi],
 			BGP_CONFIG_VRF_TO_VRF_IMPORT)) {
-		/* work back to original route */
-		bpi_ultimate = bgp_get_imported_bpi_ultimate(path_vpn);
-
 		/*
 		 * if original route was unicast,
 		 * then it did not arrive over vpn

@@ -72,3 +72,60 @@ luCommand(
     "wait",
     "CE4->PE4 ping",
 )
+luCommand(
+    "r1",
+    'ip route show table 10 | grep "proto bgp" | wc -l',
+    "15",
+    "wait",
+    "Check r1 r1-cust1 routing table",
+    time=120,
+)
+luCommand(
+    "r1",
+    'ip route show table 10 | grep "proto bgp" | wc -l',
+    "15",
+    "pass",
+    "Check r1 r1-cust1 routing table",
+)
+luCommand(
+    "r1",
+    'ip route show table 20 | grep "proto bgp" | wc -l',
+    "18",
+    "wait",
+    "Check r1 r1-cust3 routing table",
+)
+luCommand(
+    "r1",
+    'ip route show table 20 | grep "proto bgp" | wc -l',
+    "18",
+    "pass",
+    "Check r1 r1-cust3 routing table",
+)
+luCommand(
+    "r1",
+    'ip route show table 30 | grep "proto bgp" | wc -l',
+    "0",
+    "wait",
+    "Check r1 r1-cust4 routing table",
+)
+luCommand(
+    "r1",
+    'ip route show table 30 | grep "proto bgp" | wc -l',
+    "0",
+    "pass",
+    "Check r1 r1-cust4 routing table",
+)
+luCommand(
+    "r1",
+    'ip route show table 40 | grep "proto bgp" | wc -l',
+    "17",
+    "wait",
+    "Check r1 r1-cust5 routing table",
+)
+luCommand(
+    "r1",
+    'ip route show table 40 | grep "proto bgp" | wc -l',
+    "17",
+    "pass",
+    "Check r1 r1-cust5 routing table",
+)

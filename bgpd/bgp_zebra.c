@@ -213,6 +213,7 @@ static int bgp_ifp_up(struct interface *ifp)
 	struct connected *c;
 	struct nbr_connected *nc;
 	struct listnode *node, *nnode;
+	struct bgp *bgp_default = bgp_get_default();
 	struct bgp *bgp;
 
 	bgp = ifp->vrf->info;
@@ -235,6 +236,14 @@ static int bgp_ifp_up(struct interface *ifp)
 	hook_call(bgp_vrf_status_changed, bgp, ifp);
 	bgp_nht_ifp_up(ifp);
 
+	if (bgp_default && if_is_loopback(ifp)) {
+		vpn_leak_zebra_vrf_label_update(bgp, AFI_IP);
+		vpn_leak_zebra_vrf_label_update(bgp, AFI_IP6);
+		vpn_leak_zebra_vrf_sid_update(bgp, AFI_IP);
+		vpn_leak_zebra_vrf_sid_update(bgp, AFI_IP6);
+		vpn_leak_postchange_all();
+	}
+
 	return 0;
 }
 
@@ -243,6 +252,7 @@ static int bgp_ifp_down(struct interface *ifp)
 	struct connected *c;
 	struct nbr_connected *nc;
 	struct listnode *node, *nnode;
+	struct bgp *bgp_default = bgp_get_default();
 	struct bgp *bgp;
 	struct peer *peer;
 
@@ -281,6 +291,14 @@ static int bgp_ifp_down(struct interface *ifp)
 
 	hook_call(bgp_vrf_status_changed, bgp, ifp);
 	bgp_nht_ifp_down(ifp);
+
+	if (bgp_default && if_is_loopback(ifp)) {
+		vpn_leak_zebra_vrf_label_withdraw(bgp, AFI_IP);
+		vpn_leak_zebra_vrf_label_withdraw(bgp, AFI_IP6);
+		vpn_leak_zebra_vrf_sid_withdraw(bgp, AFI_IP);
+		vpn_leak_zebra_vrf_sid_withdraw(bgp, AFI_IP6);
+		vpn_leak_postchange_all();
+	}
 
 	return 0;
 }
@@ -369,10 +387,16 @@ static int bgp_interface_address_add(ZAPI_CALLBACK_ARGS)
 static int bgp_interface_address_delete(ZAPI_CALLBACK_ARGS)
 {
 	struct listnode *node, *nnode;
+	struct bgp_path_info *pi;
+	struct bgp_table *table;
+	struct bgp_dest *dest;
 	struct connected *ifc;
 	struct peer *peer;
-	struct bgp *bgp;
+	struct bgp *bgp, *from_bgp, *bgp_default;
+	struct listnode *next;
 	struct prefix *addr;
+	afi_t afi;
+	safi_t safi;
 
 	bgp = bgp_lookup_by_vrf_id(vrf_id);
 
@@ -400,9 +424,6 @@ static int bgp_interface_address_delete(ZAPI_CALLBACK_ARGS)
 		 * we do not want the peering to bounce.
 		 */
 		for (ALL_LIST_ELEMENTS(bgp->peer, node, nnode, peer)) {
-			afi_t afi;
-			safi_t safi;
-
 			if (addr->family == AF_INET)
 				continue;
 
@@ -415,6 +436,44 @@ static int bgp_interface_address_delete(ZAPI_CALLBACK_ARGS)
 					bgp_announce_route(peer, afi, safi,
 							   true);
 			}
+		}
+	}
+
+	bgp_default = bgp_get_default();
+	afi = family2afi(addr->family);
+	safi = SAFI_UNICAST;
+
+	/* When the last IPv4 address was deleted, Linux removes all routes
+	 * using the interface so that bgpd needs to re-send them.
+	 */
+	if (bgp_default && afi == AFI_IP) {
+		for (ALL_LIST_ELEMENTS_RO(bm->bgp, next, from_bgp)) {
+			table = from_bgp->rib[afi][safi];
+			if (!table)
+				continue;
+
+			for (dest = bgp_table_top(table); dest;
+			     dest = bgp_route_next(dest)) {
+				for (pi = bgp_dest_get_bgp_path_info(dest); pi;
+				     pi = pi->next) {
+					if (pi->type == ZEBRA_ROUTE_BGP &&
+					    pi->attr &&
+					    pi->attr->nh_ifindex ==
+						    ifc->ifp->ifindex) {
+						SET_FLAG(pi->attr->nh_flag,
+							 BGP_ATTR_NH_REFRESH);
+					}
+				}
+			}
+
+			if (from_bgp->inst_type != BGP_INSTANCE_TYPE_VRF)
+				continue;
+
+			vpn_leak_postchange(BGP_VPN_POLICY_DIR_TOVPN, afi,
+					    bgp_default, from_bgp);
+
+			vpn_leak_postchange(BGP_VPN_POLICY_DIR_FROMVPN, afi,
+					    bgp_default, from_bgp);
 		}
 	}
 
@@ -927,7 +986,8 @@ bgp_path_info_to_ipv6_nexthop(struct bgp_path_info *path, ifindex_t *ifindex)
 	    || path->attr->mp_nexthop_len
 		       == BGP_ATTR_NHLEN_VPNV6_GLOBAL_AND_LL) {
 		/* Check if route-map is set to prefer global over link-local */
-		if (path->attr->mp_nexthop_prefer_global) {
+		if (CHECK_FLAG(path->attr->nh_flag,
+			       BGP_ATTR_NH_MP_PREFER_GLOBAL)) {
 			nexthop = &path->attr->mp_nexthop_global;
 			if (IN6_IS_ADDR_LINKLOCAL(nexthop))
 				*ifindex = path->attr->nh_ifindex;
@@ -1511,6 +1571,7 @@ void bgp_zebra_announce(struct bgp_dest *dest, const struct prefix *p,
 			struct bgp_path_info *info, struct bgp *bgp, afi_t afi,
 			safi_t safi)
 {
+	struct bgp_path_info *bpi_ultimate;
 	struct zapi_route api = { 0 };
 	unsigned int valid_nh_count = 0;
 	bool allow_recursion = false;
@@ -1554,15 +1615,9 @@ void bgp_zebra_announce(struct bgp_dest *dest, const struct prefix *p,
 
 	peer = info->peer;
 
-	if (info->type == ZEBRA_ROUTE_BGP
-	    && info->sub_type == BGP_ROUTE_IMPORTED) {
-
-		/* Obtain peer from parent */
-		if (info->extra && info->extra->vrfleak &&
-		    info->extra->vrfleak->parent)
-			peer = ((struct bgp_path_info *)(info->extra->vrfleak
-								 ->parent))
-				       ->peer;
+	if (info->type == ZEBRA_ROUTE_BGP) {
+		bpi_ultimate = bgp_get_imported_bpi_ultimate(info);
+		peer = bpi_ultimate->peer;
 	}
 
 	tag = info->attr->tag;
@@ -3135,6 +3190,7 @@ extern struct zebra_privs_t bgpd_privs;
 
 static int bgp_ifp_create(struct interface *ifp)
 {
+	struct bgp *bgp_default = bgp_get_default();
 	struct bgp *bgp;
 
 	if (BGP_DEBUG(zebra, ZEBRA))
@@ -3149,6 +3205,17 @@ static int bgp_ifp_create(struct interface *ifp)
 
 	bgp_update_interface_nbrs(bgp, ifp, ifp);
 	hook_call(bgp_vrf_status_changed, bgp, ifp);
+
+	if (bgp_default &&
+	    (if_is_loopback_exact(ifp) ||
+	     (if_is_vrf(ifp) && ifp->vrf->vrf_id != VRF_DEFAULT))) {
+		vpn_leak_zebra_vrf_label_update(bgp, AFI_IP);
+		vpn_leak_zebra_vrf_label_update(bgp, AFI_IP6);
+		vpn_leak_zebra_vrf_sid_update(bgp, AFI_IP);
+		vpn_leak_zebra_vrf_sid_update(bgp, AFI_IP6);
+		vpn_leak_postchange_all();
+	}
+
 	return 0;
 }
 
