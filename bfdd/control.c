@@ -19,6 +19,8 @@
 
 #include "bfd.h"
 
+#ifdef BFD_CONTROL_OBSOLETE
+
 /*
  * Prototypes
  */
@@ -842,3 +844,5 @@ int control_notify_config(const char *op, struct bfd_session *bs)
 
 	return 0;
 }
+
+#endif /* BFD_CONTROL_OBSOLETE */

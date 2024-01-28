@@ -53,6 +53,10 @@ may also be specified (:ref:`common-invocation-options`).
    This option overrides the location addition that the -N option provides
    to the bfdd.sock
 
+.. warning::
+
+     Obsolete: use one of the northbound interfaces instead (e.g. gRPC).
+
 .. option:: --dplaneaddr <type>:<address>[<:port>]
 
    Configure the distributed BFD data plane listening socket bind address.
