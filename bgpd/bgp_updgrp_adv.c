@@ -78,6 +78,8 @@ static inline struct bgp_adj_out *adj_lookup(struct bgp_dest *dest,
 
 static void adj_free(struct bgp_adj_out *adj)
 {
+	bgp_labels_unintern(&adj->labels);
+
 	TAILQ_REMOVE(&(adj->subgroup->adjq), adj, subgrp_adj_train);
 	SUBGRP_DECR_STAT(adj->subgroup, adj_count);
 
@@ -513,6 +515,8 @@ bgp_advertise_clean_subgroup(struct update_subgroup *subgrp,
 	/* Unlink myself from advertisement FIFO.  */
 	bgp_adv_fifo_del(fhead, adv);
 
+	bgp_labels_unintern(&adj->labels);
+
 	/* Free memory.  */
 	bgp_advertise_free(adj->adv);
 	adj->adv = NULL;
@@ -567,9 +571,11 @@ void bgp_adj_out_set_subgroup(struct bgp_dest *dest,
 	 * the route wasn't changed actually.
 	 * Do not suppress BGP UPDATES for route-refresh.
 	 */
-	if (CHECK_FLAG(bgp->flags, BGP_FLAG_SUPPRESS_DUPLICATES)
-	    && !CHECK_FLAG(subgrp->sflags, SUBGRP_STATUS_FORCE_UPDATES)
-	    && adj->attr_hash == attr_hash) {
+	if (CHECK_FLAG(bgp->flags, BGP_FLAG_SUPPRESS_DUPLICATES) &&
+	    !CHECK_FLAG(subgrp->sflags, SUBGRP_STATUS_FORCE_UPDATES) &&
+	    adj->attr_hash == attr_hash &&
+	    bgp_labels_cmp(path->extra ? path->extra->labels : NULL,
+			   adj->labels)) {
 		if (BGP_DEBUG(update, UPDATE_OUT)) {
 			char attr_str[BUFSIZ] = {0};
 
@@ -611,6 +617,8 @@ void bgp_adj_out_set_subgroup(struct bgp_dest *dest,
 	adv->baa = bgp_advertise_attr_intern(subgrp->hash, attr);
 	adv->adj = adj;
 	adj->attr_hash = attr_hash;
+	if (path->extra)
+		adj->labels = bgp_labels_intern(path->extra->labels);
 
 	/* Add new advertisement to advertisement attribute list. */
 	bgp_advertise_add(adv->baa, adv);

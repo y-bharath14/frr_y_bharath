@@ -1555,7 +1555,7 @@ static int update_evpn_type5_route_entry(struct bgp *bgp_evpn,
 {
 	struct attr *attr_new = NULL;
 	struct bgp_path_info *pi = NULL;
-	mpls_label_t label = MPLS_INVALID_LABEL;
+	struct bgp_labels bgp_labels = {};
 	struct bgp_path_info *local_pi = NULL;
 	struct bgp_path_info *tmp_pi = NULL;
 
@@ -1583,9 +1583,14 @@ static int update_evpn_type5_route_entry(struct bgp *bgp_evpn,
 
 		/* Type-5 routes advertise the L3-VNI */
 		bgp_path_info_extra_get(pi);
-		vni2label(bgp_vrf->l3vni, &label);
-		memcpy(&pi->extra->label, &label, sizeof(label));
-		pi->extra->num_labels = 1;
+		vni2label(bgp_vrf->l3vni, &bgp_labels.label[0]);
+		bgp_labels.num_labels = 1;
+		if (!bgp_path_info_labels_same(pi, &bgp_labels.label[0],
+					       bgp_labels.num_labels)) {
+			bgp_labels_unintern(&pi->extra->labels);
+			pi->extra->labels = bgp_labels_intern(&bgp_labels);
+		}
+
 
 		/* add the route entry to route node*/
 		bgp_path_info_add(dest, pi);
@@ -1881,15 +1886,13 @@ static int update_evpn_route_entry(struct bgp *bgp, struct bgpevpn *vpn,
 	struct bgp_path_info *local_pi;
 	struct attr *attr_new;
 	struct attr local_attr;
-	mpls_label_t label[BGP_MAX_LABELS];
-	uint32_t num_labels = 1;
+	struct bgp_labels bgp_labels = {};
 	int route_change = 1;
 	uint8_t sticky = 0;
 	const struct prefix_evpn *evp;
 
 	*pi = NULL;
 	evp = (const struct prefix_evpn *)bgp_dest_get_prefix(dest);
-	memset(&label, 0, sizeof(label));
 
 	/* See if this is an update of an existing route, or a new add. */
 	local_pi = bgp_evpn_route_get_local_path(bgp, dest);
@@ -1931,7 +1934,8 @@ static int update_evpn_route_entry(struct bgp *bgp, struct bgpevpn *vpn,
 		bgp_path_info_extra_get(tmp_pi);
 
 		/* The VNI goes into the 'label' field of the route */
-		vni2label(vpn->vni, &label[0]);
+		vni2label(vpn->vni, &bgp_labels.label[0]);
+		bgp_labels.num_labels = 1;
 
 		/* Type-2 routes may carry a second VNI - the L3-VNI.
 		 * Only attach second label if we are advertising two labels for
@@ -1943,13 +1947,16 @@ static int update_evpn_route_entry(struct bgp *bgp, struct bgpevpn *vpn,
 
 			l3vni = bgpevpn_get_l3vni(vpn);
 			if (l3vni) {
-				vni2label(l3vni, &label[1]);
-				num_labels++;
+				vni2label(l3vni, &bgp_labels.label[1]);
+				bgp_labels.num_labels++;
 			}
 		}
 
-		memcpy(&tmp_pi->extra->label, label, sizeof(label));
-		tmp_pi->extra->num_labels = num_labels;
+		if (!bgp_path_info_labels_same(tmp_pi, &bgp_labels.label[0],
+					       bgp_labels.num_labels)) {
+			bgp_labels_unintern(&tmp_pi->extra->labels);
+			tmp_pi->extra->labels = bgp_labels_intern(&bgp_labels);
+		}
 
 		if (evp->prefix.route_type == BGP_EVPN_MAC_IP_ROUTE) {
 			if (mac)
@@ -1973,7 +1980,8 @@ static int update_evpn_route_entry(struct bgp *bgp, struct bgpevpn *vpn,
 			 * The attributes have changed, type-2 routes needs to
 			 * be advertised with right labels.
 			 */
-			vni2label(vpn->vni, &label[0]);
+			vni2label(vpn->vni, &bgp_labels.label[0]);
+			bgp_labels.num_labels = 1;
 			if (evp->prefix.route_type == BGP_EVPN_MAC_IP_ROUTE
 			    && CHECK_FLAG(vpn->flags,
 					  VNI_FLAG_USE_TWO_LABELS)) {
@@ -1981,12 +1989,17 @@ static int update_evpn_route_entry(struct bgp *bgp, struct bgpevpn *vpn,
 
 				l3vni = bgpevpn_get_l3vni(vpn);
 				if (l3vni) {
-					vni2label(l3vni, &label[1]);
-					num_labels++;
+					vni2label(l3vni, &bgp_labels.label[1]);
+					bgp_labels.num_labels++;
 				}
 			}
-			memcpy(&tmp_pi->extra->label, label, sizeof(label));
-			tmp_pi->extra->num_labels = num_labels;
+			if (!bgp_path_info_labels_same(tmp_pi,
+						       &bgp_labels.label[0],
+						       bgp_labels.num_labels)) {
+				bgp_labels_unintern(&tmp_pi->extra->labels);
+				tmp_pi->extra->labels =
+					bgp_labels_intern(&bgp_labels);
+			}
 
 			if (evp->prefix.route_type == BGP_EVPN_MAC_IP_ROUTE) {
 				if (mac)
@@ -2893,12 +2906,11 @@ bgp_create_evpn_bgp_path_info(struct bgp_path_info *parent_pi,
 				sizeof(struct bgp_path_info_extra_vrfleak));
 	pi->extra->vrfleak->parent = bgp_path_info_lock(parent_pi);
 	bgp_dest_lock_node((struct bgp_dest *)parent_pi->net);
-	if (parent_pi->extra) {
-		memcpy(&pi->extra->label, &parent_pi->extra->label,
-		       sizeof(pi->extra->label));
-		pi->extra->num_labels = parent_pi->extra->num_labels;
+	if (parent_pi->extra)
 		pi->extra->igpmetric = parent_pi->extra->igpmetric;
-	}
+
+	if (bgp_path_info_num_labels(parent_pi))
+		pi->extra->labels = bgp_labels_intern(parent_pi->extra->labels);
 
 	bgp_path_info_add(dest, pi);
 
@@ -4612,7 +4624,7 @@ static int process_type2_route(struct peer *peer, afi_t afi, safi_t safi,
 	uint8_t macaddr_len;
 	/* holds the VNI(s) as in packet */
 	mpls_label_t label[BGP_MAX_LABELS] = {};
-	uint32_t num_labels = 0;
+	uint8_t num_labels = 0;
 	uint32_t eth_tag;
 	int ret = 0;
 
@@ -4955,7 +4967,7 @@ static int process_type5_route(struct peer *peer, afi_t afi, safi_t safi,
 
 static void evpn_mpattr_encode_type5(struct stream *s, const struct prefix *p,
 				     const struct prefix_rd *prd,
-				     mpls_label_t *label, uint32_t num_labels,
+				     mpls_label_t *label, uint8_t num_labels,
 				     struct attr *attr)
 {
 	int len;
@@ -5745,7 +5757,7 @@ int bgp_evpn_uninstall_routes(struct bgp *bgp, struct bgpevpn *vpn)
 /*
  * TODO: Hardcoded for a maximum of 2 VNIs right now
  */
-char *bgp_evpn_label2str(mpls_label_t *label, uint32_t num_labels, char *buf,
+char *bgp_evpn_label2str(mpls_label_t *label, uint8_t num_labels, char *buf,
 			 int len)
 {
 	vni_t vni1, vni2;
@@ -5829,7 +5841,7 @@ void bgp_evpn_route2json(const struct prefix_evpn *p, json_object *json)
  */
 void bgp_evpn_encode_prefix(struct stream *s, const struct prefix *p,
 			    const struct prefix_rd *prd, mpls_label_t *label,
-			    uint32_t num_labels, struct attr *attr,
+			    uint8_t num_labels, struct attr *attr,
 			    bool addpath_capable, uint32_t addpath_tx_id)
 {
 	struct prefix_evpn *evp = (struct prefix_evpn *)p;
@@ -7659,7 +7671,7 @@ void bgp_evpn_handle_resolve_overlay_index_unset(struct hash_bucket *bucket,
  *
  */
 mpls_label_t *bgp_evpn_path_info_labels_get_l3vni(mpls_label_t *labels,
-						  uint32_t num_labels)
+						  uint8_t num_labels)
 {
 	if (!labels)
 		return NULL;
@@ -7678,8 +7690,10 @@ vni_t bgp_evpn_path_info_get_l3vni(const struct bgp_path_info *pi)
 	if (!pi->extra)
 		return 0;
 
-	return label2vni(bgp_evpn_path_info_labels_get_l3vni(
-		pi->extra->label, pi->extra->num_labels));
+	return label2vni(
+		bgp_evpn_path_info_labels_get_l3vni(pi->extra->labels->label,
+						    pi->extra->labels
+							    ->num_labels));
 }
 
 /*
