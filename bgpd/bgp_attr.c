@@ -910,6 +910,11 @@ static void attr_show_all_iterator(struct hash_bucket *bucket, struct vty *vty)
 		attr->flag, attr->distance, attr->med, attr->local_pref,
 		attr->origin, attr->weight, attr->label, sid, attr->aigp_metric);
 	vty_out(vty,
+		"\tnh_ifindex: %u nh_flags: %u distance: %u nexthop_global: %pI6 nexthop_local: %pI6 nexthop_local_ifindex: %u\n",
+		attr->nh_ifindex, attr->nh_flags, attr->distance,
+		&attr->mp_nexthop_global, &attr->mp_nexthop_local,
+		attr->nh_lla_ifindex);
+	vty_out(vty,
 		"\taspath: %s Community: %s Extended Community: %s Large Community: %s\n",
 		aspath_print(attr->aspath),
 		community_str(attr->community, false, false),
