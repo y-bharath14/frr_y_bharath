@@ -118,7 +118,7 @@ static const struct message bgp_pmsi_tnltype_str[] = {
 #define SOFT_RECONFIG_TASK_MAX_PREFIX 25000
 
 DEFINE_HOOK(bgp_process,
-	    (struct bgp *bgp, afi_t afi, safi_t safi, struct bgp_dest *bn,
+	    (struct bgp * bgp, afi_t afi, safi_t safi, struct bgp_dest *bn,
 	     uint32_t addpath_id, struct peer *peer, bool post),
 	    (bgp, afi, safi, bn, addpath_id, peer, post));
 
@@ -2085,8 +2085,8 @@ bool subgroup_announce_check(struct bgp_dest *dest, struct bgp_path_info *pi,
 					       : pi->attr;
 
 	/* special conditions for bmp rib-out pre-policy check */
-	bool ignore_policy =
-		CHECK_FLAG(special_cond, BGP_ANNCHK_SPECIAL_IGNORE_OUT_POLICY);
+	bool ignore_policy = CHECK_FLAG(special_cond,
+					BGP_ANNCHK_SPECIAL_IGNORE_OUT_POLICY);
 	bool ignore_path_status =
 		CHECK_FLAG(special_cond, BGP_ANNCHK_SPECIAL_IGNORE_PATH_STATUS);
 
@@ -2755,8 +2755,7 @@ static void bgp_route_select_timer_expire(struct event *thread)
 void bgp_best_selection(struct bgp *bgp, struct bgp_dest *dest,
 			struct bgp_maxpaths_cfg *mpath_cfg,
 			struct bgp_path_info_pair *result, afi_t afi,
-			safi_t safi,
-			struct bgp_mpath_diff_head *mpath_diff_list)
+			safi_t safi, struct bgp_mpath_diff_head *mpath_diff_list)
 {
 	struct bgp_path_info *new_select;
 	struct bgp_path_info *old_select;
@@ -2873,7 +2872,8 @@ void bgp_best_selection(struct bgp *bgp, struct bgp_dest *dest,
 
 			if (CHECK_FLAG(pi->flags, BGP_PATH_REMOVED) &&
 			    (pi != old_select)) {
-				bgp_mpath_diff_insert(mpath_diff_list, pi, false);
+				bgp_mpath_diff_insert(mpath_diff_list, pi,
+						      false);
 				dest = bgp_path_info_reap(dest, pi);
 				assert(dest);
 			}
@@ -3434,11 +3434,10 @@ static void bgp_process_main_one(struct bgp *bgp, struct bgp_dest *dest,
 	frr_each (bgp_mpath_diff, &mpath_diff, diff) {
 		if (diff->path) {
 			if (debug)
-				zlog_debug(
-					"[%s] bpi: %p, dest=%pBD peer=%pBP, rx_id=%" PRIu32,
-					diff->update ? "+" : "-", diff->path,
-					diff->path->net, diff->path->peer,
-					diff->path->addpath_rx_id);
+				zlog_debug("[%s] bpi: %p, dest=%pBD peer=%pBP, rx_id=%" PRIu32,
+					   diff->update ? "+" : "-", diff->path,
+					   diff->path->net, diff->path->peer,
+					   diff->path->addpath_rx_id);
 
 			hook_call(bgp_route_update, bgp, afi, safi, dest,
 				  diff->path, diff->update ? diff->path : NULL);
@@ -3629,7 +3628,8 @@ out:
 			continue;
 
 		if (mpath->peer)
-			mpath->peer->stat_loc_rib_count[afi][safi] += diff->update ? 1 : -1;
+			mpath->peer->stat_loc_rib_count[afi][safi] +=
+				diff->update ? 1 : -1;
 
 		hook_call(bgp_process_main_one_end, bgp, mpath);
 	}
@@ -5220,8 +5220,8 @@ void bgp_withdraw(struct peer *peer, const struct prefix *p,
 	 * and
 	 * if there was no entry, we don't need to do anything more.
 	 */
-	if (CHECK_FLAG(peer->af_flags[afi][safi], PEER_FLAG_SOFT_RECONFIG)
-	    && peer != bgp->peer_self) {
+	if (CHECK_FLAG(peer->af_flags[afi][safi], PEER_FLAG_SOFT_RECONFIG) &&
+	    peer != bgp->peer_self) {
 		if (!bgp_adj_in_unset(&dest, afi, safi, peer, addpath_id)) {
 			assert(dest);
 			peer->stat_pfx_dup_withdraw++;
