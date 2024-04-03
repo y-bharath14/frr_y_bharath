@@ -5196,9 +5196,17 @@ DEFUN (no_neighbor_peer_group,
 	VTY_DECLVAR_CONTEXT(bgp, bgp);
 	int idx_word = 2;
 	struct peer_group *group;
-
+	afi_t afi;
 	group = peer_group_lookup(bgp, argv[idx_word]->arg);
 	if (group) {
+		for (afi = AFI_IP; afi < AFI_MAX; afi++) {
+			int lr_count = listcount(group->listen_range[afi]);
+			if (lr_count) {
+				vty_out(vty, "%% Cannot delete peer-group. Currently attached to %d listen-range(s). Delete listen-range(s) first\n",
+					lr_count);
+				return CMD_WARNING_CONFIG_FAILED;
+				}
+			}
 		peer_group_notify_unconfig(group);
 		peer_group_delete(group);
 	} else {
