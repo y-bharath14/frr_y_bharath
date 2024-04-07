@@ -356,7 +356,7 @@ MGMT Show commands
     Currenlty supported values for 'candidate' and 'running' only
     ('operational' shall be supported in future soon).
 
-.. clicmd:: show mgmt database-contents [candidate|operation|running] [xpath WORD] [file WORD] json|xml
+.. clicmd:: show mgmt datastore-contents [candidate|operation|running] [xpath WORD] [file WORD] json|xml
 
     This command dumps the subtree pointed by the xpath in JSON or XML format. If filepath is
     not present then the tree will be printed on the shell.
@@ -364,3 +364,46 @@ MGMT Show commands
 .. clicmd:: show mgmt commit-history
 
     This command dumps details of upto last 10 commits handled by MGMTd.
+
+
+MGMT Daemon debug commands
+==========================
+
+The following debug commands enable debugging within the management daemon:
+
+.. clicmd:: debug mgmt backend
+
+   Enable[/Disable] debugging messages related to backend operations within the
+   management daemon.
+
+.. clicmd:: debug mgmt datastore
+
+   Enable[/Disable] debugging messages related to YANG datastore operations
+   within the management daemon.
+
+.. clicmd:: debug mgmt frontend
+
+   Enable[/Disable] debugging messages related to frontend operations within the
+   management daemon.
+
+.. clicmd:: debug mgmt transaction
+
+   Enable[/Disable] debugging messages related to transactions within the
+   management daemon.
+
+
+MGMT Client debug commands
+==========================
+
+The following debug commands enable debugging within the management front and
+backend clients:
+
+.. clicmd:: debug mgmt client backend
+
+   Enable[/Disable] debugging messages related to backend operations inside the
+   backend mgmtd clients.
+
+.. clicmd:: debug mgmt client frontend
+
+   Enable[/Disable] debugging messages related to frontend operations inside the
+   frontend mgmtd clients.

@@ -80,13 +80,12 @@ void zebra_gr_stale_client_cleanup(struct list *client_list)
 			/* Cancel the stale timer */
 			if (info->t_stale_removal != NULL) {
 				EVENT_OFF(info->t_stale_removal);
-				info->t_stale_removal = NULL;
 				info->do_delete = true;
 				/* Process the stale routes */
 				event_execute(
 					zrouter.master,
 					zebra_gr_route_stale_delete_timer_expiry,
-					info, 0);
+					info, 0, NULL);
 			}
 		}
 	}
@@ -299,6 +298,16 @@ struct zebra_gr_afi_clean {
  * Functions to deal with capabilities
  */
 
+void zebra_gr_client_final_shutdown(struct zserv *client)
+{
+	struct client_gr_info *info;
+
+	while (!TAILQ_EMPTY(&client->gr_info_queue)) {
+		info = TAILQ_FIRST(&client->gr_info_queue);
+		zebra_gr_client_info_delete(client, info);
+	}
+}
+
 /*
  * Function to decode and call appropriate functions
  * to handle client capabilities.
@@ -328,7 +337,7 @@ void zread_client_capabilities(ZAPI_HANDLER_ARGS)
 		return;
 
 	/* GR only for dynamic clients */
-	if (client->proto <= ZEBRA_ROUTE_CONNECT) {
+	if (client->proto <= ZEBRA_ROUTE_LOCAL) {
 		LOG_GR("%s: GR capabilities for client %s not supported",
 		       __func__, zebra_route_string(client->proto));
 		return;

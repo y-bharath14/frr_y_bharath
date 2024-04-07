@@ -378,6 +378,8 @@ isis_spftree_new(struct isis_area *area, struct lspdb_head *lspdb,
 
 static void _isis_spftree_del(struct isis_spftree *spftree)
 {
+	void *info, *backup_info;
+
 	hash_clean_and_free(&spftree->prefix_sids, NULL);
 	isis_zebra_rlfa_unregister_all(spftree);
 	isis_rlfa_list_clear(spftree);
@@ -391,16 +393,18 @@ static void _isis_spftree_del(struct isis_spftree *spftree)
 	list_delete(&spftree->sadj_list);
 	isis_vertex_queue_free(&spftree->tents);
 	isis_vertex_queue_free(&spftree->paths);
-	isis_route_table_info_free(spftree->route_table->info);
-	isis_route_table_info_free(spftree->route_table_backup->info);
+	info =  spftree->route_table->info;
+	backup_info = spftree->route_table_backup->info;
+	route_table_finish(spftree->route_table);
+	route_table_finish(spftree->route_table_backup);
+	isis_route_table_info_free(info);
+	isis_route_table_info_free(backup_info);
 }
 
 void isis_spftree_del(struct isis_spftree *spftree)
 {
 	_isis_spftree_del(spftree);
 
-	route_table_finish(spftree->route_table);
-	route_table_finish(spftree->route_table_backup);
 	spftree->route_table = NULL;
 
 	XFREE(MTYPE_ISIS_SPFTREE, spftree);
@@ -837,6 +841,7 @@ static int isis_spf_process_lsp(struct isis_spftree *spftree,
 	struct isis_mt_router_info *mt_router_info = NULL;
 	struct prefix_pair ip_info;
 	bool has_valid_psid;
+	bool loc_is_in_ipv6_reach = false;
 
 	if (isis_lfa_excise_node_check(spftree, lsp->hdr.lsp_id)) {
 		if (IS_DEBUG_LFA)
@@ -1125,6 +1130,50 @@ lspfragloop:
 				}
 			}
 			if (!has_valid_psid)
+				process_N(spftree, vtype, &ip_info, dist,
+					  depth + 1, NULL, parent);
+		}
+
+		/* Process SRv6 Locator TLVs */
+
+		struct isis_item_list *srv6_locators = isis_lookup_mt_items(
+			&lsp->tlvs->srv6_locator, spftree->mtid);
+
+		struct isis_srv6_locator_tlv *loc;
+		for (loc = srv6_locators ? (struct isis_srv6_locator_tlv *)
+						   srv6_locators->head
+					 : NULL;
+		     loc; loc = loc->next) {
+
+			if (loc->algorithm != SR_ALGORITHM_SPF)
+				continue;
+
+			dist = cost + loc->metric;
+			vtype = VTYPE_IP6REACH_INTERNAL;
+			memset(&ip_info, 0, sizeof(ip_info));
+			ip_info.dest.family = AF_INET6;
+			ip_info.dest.u.prefix6 = loc->prefix.prefix;
+			ip_info.dest.prefixlen = loc->prefix.prefixlen;
+
+			/* An SRv6 Locator can be received in both a Prefix
+			Reachability TLV and an SRv6 Locator TLV (as per RFC
+			9352 section #5). We go through the Prefix Reachability
+			TLVs and check if the SRv6 Locator is present in some of
+			them. If we find the SRv6 Locator in some Prefix
+			Reachbility TLV then it means that we have already
+			processed it before and we can skip it. */
+			for (r = ipv6_reachs ? (struct isis_ipv6_reach *)
+						       ipv6_reachs->head
+					     : NULL;
+			     r; r = r->next) {
+				if (prefix_same((struct prefix *)&r->prefix,
+						(struct prefix *)&loc->prefix))
+					loc_is_in_ipv6_reach = true;
+			}
+
+			/* SRv6 locator not present in Prefix Reachability TLV,
+			 * let's process it */
+			if (!loc_is_in_ipv6_reach)
 				process_N(spftree, vtype, &ip_info, dist,
 					  depth + 1, NULL, parent);
 		}
@@ -1843,6 +1892,9 @@ void isis_run_spf(struct isis_spftree *spftree)
 	struct timeval time_end;
 	struct isis_mt_router_info *mt_router_info;
 	uint16_t mtid = 0;
+#ifndef FABRICD
+	bool flex_algo_enabled;
+#endif /* ifndef FABRICD */
 
 	/* Get time that can't roll backwards. */
 	monotime(&time_start);
@@ -1885,16 +1937,27 @@ void isis_run_spf(struct isis_spftree *spftree)
 	 * not supported by the node, it MUST stop participating in such
 	 * Flexible-Algorithm.
 	 */
-	if (flex_algo_id_valid(spftree->algorithm) &&
-	    !isis_flex_algo_elected_supported(spftree->algorithm,
-					      spftree->area)) {
-		if (!CHECK_FLAG(spftree->flags, F_SPFTREE_DISABLED)) {
-			isis_spftree_clear(spftree);
-			SET_FLAG(spftree->flags, F_SPFTREE_DISABLED);
+	if (flex_algo_id_valid(spftree->algorithm)) {
+		flex_algo_enabled = isis_flex_algo_elected_supported(
+			spftree->algorithm, spftree->area);
+		if (flex_algo_enabled !=
+		    flex_algo_get_state(spftree->area->flex_algos,
+					spftree->algorithm)) {
+			/* actual state is inconsistent with local LSP */
 			lsp_regenerate_schedule(spftree->area,
 						spftree->area->is_type, 0);
+			goto out;
 		}
-		goto out;
+		if (!flex_algo_enabled) {
+			if (!CHECK_FLAG(spftree->flags, F_SPFTREE_DISABLED)) {
+				isis_spftree_clear(spftree);
+				SET_FLAG(spftree->flags, F_SPFTREE_DISABLED);
+				lsp_regenerate_schedule(spftree->area,
+							spftree->area->is_type,
+							0);
+			}
+			goto out;
+		}
 	}
 #endif /* ifndef FABRICD */
 
@@ -2361,7 +2424,7 @@ DEFUN(show_isis_topology, show_isis_topology_cmd,
       " [vrf <NAME|all>] topology"
 #ifndef FABRICD
       " [<level-1|level-2>]"
-      " [algorithm (128-255)]"
+      " [algorithm [(128-255)]]"
 #endif /* ifndef FABRICD */
       ,
       SHOW_STR PROTO_HELP VRF_CMD_HELP_STR
@@ -2380,8 +2443,10 @@ DEFUN(show_isis_topology, show_isis_topology_cmd,
 	struct isis *isis = NULL;
 	const char *vrf_name = VRF_DEFAULT_NAME;
 	bool all_vrf = false;
+	bool all_algorithm = false;
 	int idx_vrf = 0;
-	uint8_t algorithm = SR_ALGORITHM_SPF;
+	uint16_t algorithm = SR_ALGORITHM_SPF;
+
 #ifndef FABRICD
 	int idx = 0;
 
@@ -2390,8 +2455,12 @@ DEFUN(show_isis_topology, show_isis_topology_cmd,
 		levels = ISIS_LEVEL1;
 	if (argv_find(argv, argc, "level-2", &idx))
 		levels = ISIS_LEVEL2;
-	if (argv_find(argv, argc, "algorithm", &idx))
-		algorithm = (uint8_t)strtoul(argv[idx + 1]->arg, NULL, 10);
+	if (argv_find(argv, argc, "algorithm", &idx)) {
+		if (argv_find(argv, argc, "(128-255)", &idx))
+			algorithm = (uint16_t)strtoul(argv[idx]->arg, NULL, 10);
+		else
+			all_algorithm = true;
+	}
 #endif /* ifndef FABRICD */
 
 	if (!im) {
@@ -2402,14 +2471,34 @@ DEFUN(show_isis_topology, show_isis_topology_cmd,
 
 	if (vrf_name) {
 		if (all_vrf) {
-			for (ALL_LIST_ELEMENTS_RO(im->isis, node, isis))
-				show_isis_topology_common(vty, levels, isis,
-							  algorithm);
+			for (ALL_LIST_ELEMENTS_RO(im->isis, node, isis)) {
+				if (all_algorithm) {
+					for (algorithm = SR_ALGORITHM_FLEX_MIN;
+					     algorithm <= SR_ALGORITHM_FLEX_MAX;
+					     algorithm++)
+						show_isis_topology_common(
+							vty, levels, isis,
+							(uint8_t)algorithm);
+				} else {
+					show_isis_topology_common(
+						vty, levels, isis,
+						(uint8_t)algorithm);
+				}
+			}
 			return CMD_SUCCESS;
 		}
 		isis = isis_lookup_by_vrfname(vrf_name);
-		if (isis != NULL)
-			show_isis_topology_common(vty, levels, isis, algorithm);
+		if (isis == NULL)
+			return CMD_SUCCESS;
+		if (all_algorithm) {
+			for (algorithm = SR_ALGORITHM_FLEX_MIN;
+			     algorithm <= SR_ALGORITHM_FLEX_MAX; algorithm++) {
+				show_isis_topology_common(vty, levels, isis,
+							  (uint8_t)algorithm);
+			}
+		} else
+			show_isis_topology_common(vty, levels, isis,
+						  (uint8_t)algorithm);
 	}
 
 	return CMD_SUCCESS;
@@ -2849,6 +2938,7 @@ static void show_isis_route_common(struct vty *vty, int levels,
 			jstr = json_object_new_string(
 				area->area_tag ? area->area_tag : "null");
 			json_object_object_add(*json, "area", jstr);
+			json_object_int_add(*json, "algorithm", algo);
 		} else {
 			vty_out(vty, "Area %s:",
 				area->area_tag ? area->area_tag : "null");
@@ -2948,6 +3038,39 @@ static void show_isis_route_common(struct vty *vty, int levels,
 	}
 }
 
+static void show_isis_route_all_algos(struct vty *vty, int levels,
+				      struct isis *isis, bool prefix_sid,
+				      bool backup, json_object **json)
+{
+	uint16_t algo;
+
+	json_object *json_algo = NULL, *json_algos = NULL;
+
+	if (json) {
+		*json = json_object_new_object();
+		json_algos = json_object_new_array();
+	}
+
+	for (algo = SR_ALGORITHM_FLEX_MIN; algo <= SR_ALGORITHM_FLEX_MAX;
+	     algo++) {
+		show_isis_route_common(vty, levels, isis, prefix_sid, backup,
+				       (uint8_t)algo, json ? &json_algo : NULL);
+		if (!json)
+			continue;
+		if (json_object_object_length(json_algo) == 0) {
+			json_object_free(json_algo);
+			continue;
+		}
+		json_object_object_add(json_algo, "algorithm",
+				       json_object_new_int(algo));
+		json_object_array_add(json_algos, json_algo);
+	}
+
+	if (json)
+		json_object_object_add(*json, "algorithms", json_algos);
+}
+
+
 DEFUN(show_isis_route, show_isis_route_cmd,
       "show " PROTO_NAME
       " [vrf <NAME|all>] route"
@@ -2956,7 +3079,7 @@ DEFUN(show_isis_route, show_isis_route_cmd,
 #endif /* ifndef FABRICD */
       " [<prefix-sid|backup>]"
 #ifndef FABRICD
-      " [algorithm (128-255)]"
+      " [algorithm [(128-255)]]"
 #endif /* ifndef FABRICD */
       " [json$uj]",
       SHOW_STR PROTO_HELP VRF_FULL_CMD_HELP_STR
@@ -2978,6 +3101,7 @@ DEFUN(show_isis_route, show_isis_route_cmd,
 	struct listnode *node;
 	const char *vrf_name = VRF_DEFAULT_NAME;
 	bool all_vrf = false;
+	bool all_algorithm = false;
 	bool prefix_sid = false;
 	bool backup = false;
 	bool uj = use_json(argc, argv);
@@ -3004,8 +3128,13 @@ DEFUN(show_isis_route, show_isis_route_cmd,
 		backup = true;
 
 #ifndef FABRICD
-	if (argv_find(argv, argc, "algorithm", &idx))
-		algorithm = (uint8_t)strtoul(argv[idx + 1]->arg, NULL, 10);
+	if (argv_find(argv, argc, "algorithm", &idx)) {
+		if (argv_find(argv, argc, "(128-255)", &idx))
+			algorithm = (uint8_t)strtoul(argv[idx + 1]->arg, NULL,
+						     10);
+		else
+			all_algorithm = true;
+	}
 #endif /* ifndef FABRICD */
 
 	if (uj)
@@ -3014,9 +3143,19 @@ DEFUN(show_isis_route, show_isis_route_cmd,
 	if (vrf_name) {
 		if (all_vrf) {
 			for (ALL_LIST_ELEMENTS_RO(im->isis, node, isis)) {
-				show_isis_route_common(
-					vty, levels, isis, prefix_sid, backup,
-					algorithm, uj ? &json_vrf : NULL);
+				if (all_algorithm)
+					show_isis_route_all_algos(vty, levels,
+								  isis,
+								  prefix_sid,
+								  backup,
+								  uj ? &json_vrf
+								     : NULL);
+				else
+					show_isis_route_common(vty, levels,
+							       isis, prefix_sid,
+							       backup, algorithm,
+							       uj ? &json_vrf
+								  : NULL);
 				if (uj) {
 					json_object_object_add(
 						json_vrf, "vrf_id",
@@ -3029,9 +3168,15 @@ DEFUN(show_isis_route, show_isis_route_cmd,
 		}
 		isis = isis_lookup_by_vrfname(vrf_name);
 		if (isis != NULL) {
-			show_isis_route_common(vty, levels, isis, prefix_sid,
-					       backup, algorithm,
-					       uj ? &json_vrf : NULL);
+			if (all_algorithm)
+				show_isis_route_all_algos(vty, levels, isis,
+							  prefix_sid, backup,
+							  uj ? &json_vrf : NULL);
+			else
+				show_isis_route_common(vty, levels, isis,
+						       prefix_sid, backup,
+						       algorithm,
+						       uj ? &json_vrf : NULL);
 			if (uj) {
 				json_object_object_add(
 					json_vrf, "vrf_id",

@@ -32,8 +32,7 @@ Configuring OSPF
 Therefore *zebra* must be running before invoking *ospfd*. Also, if *zebra* is
 restarted then *ospfd* must be too.
 
-Like other daemons, *ospfd* configuration is done in :abbr:`OSPF` specific
-configuration file :file:`ospfd.conf` when the integrated config is not used.
+.. include:: config-include.rst
 
 .. _ospf-multi-instance:
 
@@ -314,7 +313,7 @@ To start OSPF process you have to specify the OSPF router.
 
    This command controls the ospf instance's socket buffer sizes. The
    'no' form resets one or both values to the default.
-   
+
 .. clicmd:: no socket-per-interface
 
    Ordinarily, ospfd uses a socket per interface for sending
@@ -599,6 +598,38 @@ Interfaces
    KEY is the actual message digest key, of up to 16 chars (larger strings will
    be truncated), and is associated with the given KEYID.
 
+.. clicmd:: ip ospf authentication key-chain KEYCHAIN
+
+   Specify that HMAC cryptographic authentication must be used on this interface
+   using a key chain. Overrides any authentication enabled on a per-area basis
+   (:clicmd:`area A.B.C.D authentication message-digest`).
+
+   ``KEYCHAIN``: Specifies the name of the key chain that contains the authentication
+   key(s) and cryptographic algorithms to be used for OSPF authentication. The key chain
+   is a logical container that holds one or more authentication keys,
+   allowing for key rotation and management.
+
+   Note that OSPF HMAC cryptographic authentication requires that time never go backwards
+   (correct time is NOT important, only that it never goes backwards), even
+   across resets, if ospfd is to be able to promptly reestablish adjacencies
+   with its neighbours after restarts/reboots. The host should have system time
+   be set at boot from an external or non-volatile source (e.g. battery backed
+   clock, NTP, etc.) or else the system clock should be periodically saved to
+   non-volatile storage and restored at boot if HMAC cryptographic authentication is to be
+   expected to work reliably.
+
+   Example:
+
+   .. code:: sh
+
+      r1(config)#key chain temp
+      r1(config-keychain)#key 13
+      r1(config-keychain-key)#key-string ospf
+      r1(config-keychain-key)#cryptographic-algorithm hmac-sha-256
+      r1(config)#int eth0
+      r1(config-if)#ip ospf authentication key-chain temp
+      r1(config-if)#ip ospf area 0
+
 .. clicmd:: ip ospf cost (1-65535)
 
 
@@ -635,7 +666,20 @@ Interfaces
    :clicmd:`ip ospf dead-interval minimal hello-multiplier (2-20)` is also
    specified for the interface.
 
-.. clicmd:: ip ospf network (broadcast|non-broadcast|point-to-multipoint|point-to-point [dmvpn])
+.. clicmd:: ip ospf graceful-restart hello-delay (1-1800)
+
+   Set the length of time during which Grace-LSAs are sent at 1-second intervals
+   while coming back up after an unplanned outage. During this time, no hello
+   packets are sent.
+
+   A higher hello delay will increase the chance that all neighbors are notified
+   about the ongoing graceful restart before receiving a hello packet (which is
+   crucial for the graceful restart to succeed). The hello delay shouldn't be set
+   too high, however, otherwise the adjacencies might time out. As a best practice,
+   it's recommended to set the hello delay and hello interval with the same values.
+   The default value is 10 seconds.
+
+.. clicmd:: ip ospf network (broadcast|non-broadcast|point-to-multipoint [delay-reflood]|point-to-point [dmvpn])
 
    When configuring a point-to-point network on an interface and the interface
    has a /32 address associated with then OSPF will treat the interface
@@ -646,6 +690,13 @@ Interfaces
    When used in a DMVPN network at a spoke, this OSPF will be configured in
    point-to-point, but the HUB will be a point-to-multipoint. To make this
    topology work, specify the optional 'dmvpn' parameter at the spoke.
+
+   When the network is configured as point-to-multipoint and `delay-reflood`
+   is specified, LSAs received on the interface from neighbors on the
+   interface will not be flooded back out on the interface immediately.
+   Rather, they will be added to the neighbor's link state retransmission
+   list and only sent to the neighbor if the neighbor doesn't acknowledge
+   the LSA prior to the link state retransmission timer expiring.
 
    Set explicitly network type for specified interface.
 
@@ -678,6 +729,15 @@ Interfaces
    scope) - as would occur if connected addresses were redistributed into
    OSPF (:ref:`redistribute-routes-to-ospf`). This is the only way to
    advertise non-OSPF links into stub areas.
+
+.. clicmd:: ip ospf prefix-suppression [A.B.C.D]
+
+   Configure OSPF to not advertise the IPv4 prefix associated with the
+   OSPF interface. The associated IPv4 prefix will be omitted from an OSPF
+   router-LSA or advertised with a host mask in an OSPF network-LSA as
+   specified in RFC 6860, "Hiding Transit-Only Networks in OSPF". If an
+   optional IPv4 address is specified, the prefix suppression will apply
+   to the OSPF interface associated with the specified interface address.
 
 .. clicmd:: ip ospf area (A.B.C.D|(0-4294967295))
 
@@ -770,6 +830,10 @@ Graceful Restart
    To perform a graceful shutdown, the "graceful-restart prepare ip ospf"
    EXEC-level command needs to be issued before restarting the ospfd daemon.
 
+   When Graceful Restart is enabled and the ospfd daemon crashes or is killed
+   abruptely (e.g. SIGKILL), it will attempt an unplanned Graceful Restart once
+   it restarts.
+
 .. clicmd:: graceful-restart helper enable [A.B.C.D]
 
 
@@ -788,7 +852,7 @@ Graceful Restart
    affects the restarting router.
    By default 'strict-lsa-checking' is enabled"
 
-.. clicmd:: graceful-restart helper supported-grace-time
+.. clicmd:: graceful-restart helper supported-grace-time (10-1800)
 
 
    Supports as HELPER for configured grace period.
@@ -860,10 +924,11 @@ Showing Information
 
    Show detailed information about the OSPF link-state database.
 
-.. clicmd:: show ip ospf route [json]
+.. clicmd:: show ip ospf route [detail] [json]
 
    Show the OSPF routing table, as determined by the most recent SPF
-   calculation.
+   calculation. When detail option is used, it shows more information
+   to the CLI like advertising router ID for each route, etc.
 
 .. clicmd:: show ip ospf [vrf <NAME|all>] border-routers [json]
 
@@ -874,7 +939,7 @@ Showing Information
 
 .. clicmd:: show ip ospf graceful-restart helper [detail] [json]
 
-   Displays the Grcaeful Restart Helper details including helper
+   Displays the Graceful Restart Helper details including helper
    config changes.
 
 .. _opaque-lsa:
@@ -888,13 +953,25 @@ Opaque LSA
 
 
 
-   *ospfd* supports Opaque LSA (:rfc:`2370`) as partial support for
+   *ospfd* supports Opaque LSA (:rfc:`5250`) as partial support for
    MPLS Traffic Engineering LSAs. The opaque-lsa capability must be
    enabled in the configuration. An alternate command could be
    "mpls-te on" (:ref:`ospf-traffic-engineering`). Note that FRR
    offers only partial support for some of the routing protocol
    extensions that are used with MPLS-TE; it does not support a
    complete RSVP-TE solution.
+
+.. clicmd:: ip ospf capability opaque [A.B.C.D]
+
+   Enable or disable OSPF LSA database exchange and flooding on an interface.
+   The default is that opaque capability is enabled as long as the opaque
+   capability is enabled with the :clicmd:`capability opaque` command at the
+   OSPF instance level (using the command above). Note that disabling opaque
+   LSA support on an interface will impact the applications using opaque LSAs
+   if the opaque LSAs are not received on other flooding paths by all the
+   OSPF routers using those applications. For example, OSPF Graceful Restart
+   uses opaque-link LSAs and disabling support on an interface will disable
+   graceful restart signaling on that interface.
 
 .. clicmd:: show ip ospf [vrf <NAME|all>] database (opaque-link|opaque-area|opaque-external)
 

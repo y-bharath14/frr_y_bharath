@@ -3,6 +3,7 @@
  */
 
 #include <zebra.h>
+#include <sys/stat.h>
 
 #include <lib/version.h>
 #include "getopt.h"
@@ -152,7 +153,7 @@ int main(int argc, char **argv)
 	}
 
 	/* Create VTY socket */
-	vty_serv_sock(vty_addr, vty_port, "/tmp/.heavy.sock");
+	vty_serv_start(vty_addr, vty_port, "/tmp/.heavy.sock");
 
 	/* Configuration file read*/
 	if (!config_file)

@@ -10,6 +10,7 @@
 #include "lib/bfd.h"
 #include "qobj.h"
 #include "hook.h"
+#include "keychain.h"
 #include "ospfd/ospf_packet.h"
 #include "ospfd/ospf_spf.h"
 
@@ -72,11 +73,17 @@ struct ospf_if_params {
 	DECLARE_IF_PARAM(uint32_t, v_wait);  /* Router Dead Interval */
 	bool is_v_wait_set;                  /* Check for Dead Interval set */
 
+	/* GR Hello Delay Interval */
+	DECLARE_IF_PARAM(uint16_t, v_gr_hello_delay);
+
 	/* MTU mismatch check (see RFC2328, chap 10.6) */
 	DECLARE_IF_PARAM(uint8_t, mtu_ignore);
 
 	/* Fast-Hellos */
 	DECLARE_IF_PARAM(uint8_t, fast_hello);
+
+	/* Prefix-Suppression */
+	DECLARE_IF_PARAM(bool, prefix_suppression);
 
 	/* Authentication data. */
 	uint8_t auth_simple[OSPF_AUTH_SIMPLE_SIZE + 1]; /* Simple password. */
@@ -85,6 +92,8 @@ struct ospf_if_params {
 	DECLARE_IF_PARAM(struct list *,
 			 auth_crypt);     /* List of Auth cryptographic data. */
 	DECLARE_IF_PARAM(int, auth_type); /* OSPF authentication type */
+
+	DECLARE_IF_PARAM(char*, keychain_name); /* OSPF HMAC Cryptographic Authentication*/
 
 	/* Other, non-configuration state */
 	uint32_t network_lsa_seqnum; /* Network LSA seqnum */
@@ -106,6 +115,12 @@ struct ospf_if_params {
 
 	/* point-to-point DMVPN configuration */
 	uint8_t ptp_dmvpn;
+
+	/* point-to-multipoint delayed reflooding configuration */
+	bool p2mp_delay_reflood;
+
+	/* Opaque LSA capability at interface level (see RFC5250) */
+	DECLARE_IF_PARAM(bool, opaque_capable);
 };
 
 enum { MEMBER_ALLROUTERS = 0,
@@ -174,6 +189,9 @@ struct ospf_interface {
 	/* point-to-point DMVPN configuration */
 	uint8_t ptp_dmvpn;
 
+	/* point-to-multipoint delayed reflooding */
+	bool p2mp_delay_reflood;
+
 	/* State of Interface State Machine. */
 	uint8_t state;
 
@@ -213,6 +231,14 @@ struct ospf_interface {
 
 	/* List of configured NBMA neighbor. */
 	struct list *nbr_nbma;
+
+	/* Graceful-Restart data. */
+	struct {
+		struct {
+			uint16_t elapsed_seconds;
+			struct event *t_grace_send;
+		} hello_delay;
+	} gr;
 
 	/* self-originated LSAs. */
 	struct ospf_lsa *network_lsa_self; /* network-LSA. */
@@ -256,6 +282,10 @@ struct ospf_interface {
 
 	uint32_t full_nbrs;
 
+	/* Buffered values for keychain and key */
+	struct keychain *keychain;
+	struct key *key;
+
 	QOBJ_FIELDS;
 };
 DECLARE_QOBJ_TYPE(ospf_interface);
@@ -270,7 +300,6 @@ extern int ospf_if_up(struct ospf_interface *oi);
 extern int ospf_if_down(struct ospf_interface *oi);
 
 extern int ospf_if_is_up(struct ospf_interface *oi);
-extern struct ospf_interface *ospf_if_exists(struct ospf_interface *oi);
 extern struct ospf_interface *ospf_if_lookup_by_lsa_pos(struct ospf_area *area,
 							int lsa_pos);
 extern struct ospf_interface *

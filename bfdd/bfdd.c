@@ -28,8 +28,8 @@
  * FRR related code.
  */
 DEFINE_MGROUP(BFDD, "Bidirectional Forwarding Detection Daemon");
-DEFINE_MTYPE(BFDD, BFDD_CONTROL, "long-lived control socket memory");
-DEFINE_MTYPE(BFDD, BFDD_NOTIFICATION, "short-lived control notification data");
+DEFINE_MTYPE(BFDD, BFDD_CONTROL, "control socket memory");
+DEFINE_MTYPE(BFDD, BFDD_NOTIFICATION, "control notification data");
 
 /* Master of threads. */
 struct event_loop *master;
@@ -75,6 +75,8 @@ static void sigterm_handler(void)
 
 	bfd_vrf_terminate();
 
+	bfdd_zclient_terminate();
+
 	/* Terminate and free() FRR related memory. */
 	frr_fini();
 
@@ -115,13 +117,20 @@ static const struct frr_yang_module_info *const bfdd_yang_modules[] = {
 	&frr_vrf_info,
 };
 
-FRR_DAEMON_INFO(bfdd, BFD, .vty_port = 2617,
-		.proghelp = "Implementation of the BFD protocol.",
-		.signals = bfd_signals, .n_signals = array_size(bfd_signals),
-		.privs = &bglobal.bfdd_privs,
-		.yang_modules = bfdd_yang_modules,
-		.n_yang_modules = array_size(bfdd_yang_modules),
+/* clang-format off */
+FRR_DAEMON_INFO(bfdd, BFD,
+	.vty_port = BFDD_VTY_PORT,
+	.proghelp = "Implementation of the BFD protocol.",
+
+	.signals = bfd_signals,
+	.n_signals = array_size(bfd_signals),
+
+	.privs = &bglobal.bfdd_privs,
+
+	.yang_modules = bfdd_yang_modules,
+	.n_yang_modules = array_size(bfdd_yang_modules),
 );
+/* clang-format on */
 
 #define OPTION_CTLSOCK 1001
 #define OPTION_DPLANEADDR 2000
@@ -333,8 +342,6 @@ int main(int argc, char *argv[])
 		    "      --bfdctl       Specify bfdd control socket\n"
 		    "      --dplaneaddr   Specify BFD data plane address\n");
 
-	snprintf(ctl_path, sizeof(ctl_path), BFDD_CONTROL_SOCKET,
-		 "", "");
 	while (true) {
 		opt = frr_getopt(argc, argv, NULL);
 		if (opt == EOF)
@@ -355,9 +362,8 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	if (bfdd_di.pathspace && !ctlsockused)
-		snprintf(ctl_path, sizeof(ctl_path), BFDD_CONTROL_SOCKET,
-			 "/", bfdd_di.pathspace);
+	if (!ctlsockused)
+		snprintf(ctl_path, sizeof(ctl_path), BFDD_SOCK_NAME);
 
 	/* Initialize FRR infrastructure. */
 	master = frr_init();

@@ -497,7 +497,6 @@ void ls_vertex_del(struct ls_ted *ted, struct ls_vertex *vertex)
 	/* Then remove Vertex from Link State Data Base and free memory */
 	vertices_del(&ted->vertices, vertex);
 	XFREE(MTYPE_LS_DB, vertex);
-	vertex = NULL;
 }
 
 void ls_vertex_del_all(struct ls_ted *ted, struct ls_vertex *vertex)
@@ -524,7 +523,9 @@ struct ls_vertex *ls_vertex_update(struct ls_ted *ted, struct ls_node *node)
 		if (!ls_node_same(old->node, node)) {
 			ls_node_del(old->node);
 			old->node = node;
-		}
+		} else
+			ls_node_del(node);
+
 		old->status = UPDATE;
 		return old;
 	}
@@ -806,7 +807,9 @@ struct ls_edge *ls_edge_update(struct ls_ted *ted,
 		if (!ls_attributes_same(old->attributes, attributes)) {
 			ls_attributes_del(old->attributes);
 			old->attributes = attributes;
-		}
+		} else
+			ls_attributes_del(attributes);
+
 		old->status = UPDATE;
 		return old;
 	}
@@ -903,7 +906,9 @@ struct ls_subnet *ls_subnet_update(struct ls_ted *ted, struct ls_prefix *pref)
 		if (!ls_prefix_same(old->ls_pref, pref)) {
 			ls_prefix_del(old->ls_pref);
 			old->ls_pref = pref;
-		}
+		} else
+			ls_prefix_del(pref);
+
 		old->status = UPDATE;
 		return old;
 	}
@@ -956,7 +961,10 @@ struct ls_subnet *ls_find_subnet(struct ls_ted *ted,
 {
 	struct ls_subnet subnet = {};
 
-	subnet.key = *prefix;
+	if (!prefix)
+		return NULL;
+
+	prefix_copy(&subnet.key, prefix);
 	return subnets_find(&ted->subnets, &subnet);
 }
 
@@ -1136,31 +1144,13 @@ int ls_unregister(struct zclient *zclient, bool server)
 
 int ls_request_sync(struct zclient *zclient)
 {
-	struct stream *s;
-	uint16_t flags = 0;
-
 	/* Check buffer size */
 	if (STREAM_SIZE(zclient->obuf)
 	    < (ZEBRA_HEADER_SIZE + 3 * sizeof(uint32_t)))
 		return -1;
 
-	s = zclient->obuf;
-	stream_reset(s);
-
-	zclient_create_header(s, ZEBRA_OPAQUE_MESSAGE, VRF_DEFAULT);
-
-	/* Set type and flags */
-	stream_putl(s, LINK_STATE_SYNC);
-	stream_putw(s, flags);
-	/* Send destination client info */
-	stream_putc(s, zclient->redist_default);
-	stream_putw(s, zclient->instance);
-	stream_putl(s, zclient->session_id);
-
-	/* Put length into the header at the start of the stream. */
-	stream_putw_at(s, 0, stream_get_endp(s));
-
-	return zclient_send_message(zclient);
+	/* No data with this message */
+	return zclient_send_opaque(zclient, LINK_STATE_SYNC, NULL, 0);
 }
 
 static struct ls_node *ls_parse_node(struct stream *s)
@@ -1621,23 +1611,15 @@ int ls_send_msg(struct zclient *zclient, struct ls_message *msg,
 	    (ZEBRA_HEADER_SIZE + sizeof(uint32_t) + sizeof(msg)))
 		return -1;
 
+	/* Init the message, then encode the data inline. */
+	if (dst == NULL)
+		zapi_opaque_init(zclient, LINK_STATE_UPDATE, flags);
+	else
+		zapi_opaque_unicast_init(zclient, LINK_STATE_UPDATE, flags,
+					 dst->proto, dst->instance,
+					 dst->session_id);
+
 	s = zclient->obuf;
-	stream_reset(s);
-
-	zclient_create_header(s, ZEBRA_OPAQUE_MESSAGE, VRF_DEFAULT);
-
-	/* Set sub-type, flags and destination for unicast message */
-	stream_putl(s, LINK_STATE_UPDATE);
-	if (dst != NULL) {
-		SET_FLAG(flags, ZAPI_OPAQUE_FLAG_UNICAST);
-		stream_putw(s, flags);
-		/* Send destination client info */
-		stream_putc(s, dst->proto);
-		stream_putw(s, dst->instance);
-		stream_putl(s, dst->session_id);
-	} else {
-		stream_putw(s, flags);
-	}
 
 	/* Format Link State message */
 	if (ls_format_msg(s, msg) < 0) {
@@ -1757,7 +1739,7 @@ struct ls_message *ls_subnet2msg(struct ls_message *msg,
 struct ls_vertex *ls_msg2vertex(struct ls_ted *ted, struct ls_message *msg,
 				bool delete)
 {
-	struct ls_node *node = (struct ls_node *)msg->data.node;
+	struct ls_node *node = msg->data.node;
 	struct ls_vertex *vertex = NULL;
 
 	switch (msg->event) {
@@ -1779,9 +1761,10 @@ struct ls_vertex *ls_msg2vertex(struct ls_ted *ted, struct ls_message *msg,
 	case LS_MSG_EVENT_DELETE:
 		vertex = ls_find_vertex_by_id(ted, node->adv);
 		if (vertex) {
-			if (delete)
+			if (delete) {
 				ls_vertex_del_all(ted, vertex);
-			else
+				vertex = NULL;
+			} else
 				vertex->status = DELETE;
 		}
 		break;
@@ -1796,7 +1779,7 @@ struct ls_vertex *ls_msg2vertex(struct ls_ted *ted, struct ls_message *msg,
 struct ls_edge *ls_msg2edge(struct ls_ted *ted, struct ls_message *msg,
 			    bool delete)
 {
-	struct ls_attributes *attr = (struct ls_attributes *)msg->data.attr;
+	struct ls_attributes *attr = msg->data.attr;
 	struct ls_edge *edge = NULL;
 
 	switch (msg->event) {
@@ -1836,7 +1819,7 @@ struct ls_edge *ls_msg2edge(struct ls_ted *ted, struct ls_message *msg,
 struct ls_subnet *ls_msg2subnet(struct ls_ted *ted, struct ls_message *msg,
 				bool delete)
 {
-	struct ls_prefix *pref = (struct ls_prefix *)msg->data.prefix;
+	struct ls_prefix *pref = msg->data.prefix;
 	struct ls_subnet *subnet = NULL;
 
 	switch (msg->event) {
@@ -1858,9 +1841,10 @@ struct ls_subnet *ls_msg2subnet(struct ls_ted *ted, struct ls_message *msg,
 	case LS_MSG_EVENT_DELETE:
 		subnet = ls_find_subnet(ted, &pref->pref);
 		if (subnet) {
-			if (delete)
+			if (delete) {
 				ls_subnet_del_all(ted, subnet);
-			else
+				subnet = NULL;
+			} else
 				subnet->status = DELETE;
 		}
 		break;

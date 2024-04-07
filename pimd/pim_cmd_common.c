@@ -6,6 +6,7 @@
  */
 
 #include <zebra.h>
+#include <sys/ioctl.h>
 
 #include "lib/json.h"
 #include "command.h"
@@ -68,7 +69,7 @@ const char *pim_cli_get_vrf_name(struct vty *vty)
 		return NULL;
 	}
 
-	return yang_dnode_get_string(vrf_node, "./name");
+	return yang_dnode_get_string(vrf_node, "name");
 }
 
 int pim_process_join_prune_cmd(struct vty *vty, const char *jpi_str)
@@ -524,7 +525,9 @@ int pim_process_rp_cmd(struct vty *vty, const char *rp_str,
 		       const char *group_str)
 {
 	const char *vrfname;
-	char rp_group_xpath[XPATH_MAXLEN];
+	char group_xpath[XPATH_MAXLEN];
+	char rp_xpath[XPATH_MAXLEN];
+	int printed;
 	int result = 0;
 	struct prefix group;
 	pim_addr rp_addr;
@@ -569,12 +572,18 @@ int pim_process_rp_cmd(struct vty *vty, const char *rp_str,
 	if (vrfname == NULL)
 		return CMD_WARNING_CONFIG_FAILED;
 
-	snprintf(rp_group_xpath, sizeof(rp_group_xpath),
-		 FRR_PIM_STATIC_RP_XPATH, "frr-pim:pimd", "pim", vrfname,
-		 FRR_PIM_AF_XPATH_VAL, rp_str);
-	strlcat(rp_group_xpath, "/group-list", sizeof(rp_group_xpath));
+	snprintf(rp_xpath, sizeof(rp_xpath), FRR_PIM_STATIC_RP_XPATH,
+		 "frr-pim:pimd", "pim", vrfname, FRR_PIM_AF_XPATH_VAL, rp_str);
+	printed = snprintf(group_xpath, sizeof(group_xpath),
+			   "%s/group-list[.='%s']", rp_xpath, group_str);
 
-	nb_cli_enqueue_change(vty, rp_group_xpath, NB_OP_CREATE, group_str);
+	if (printed >= (int)(sizeof(group_xpath))) {
+		vty_out(vty, "Xpath too long (%d > %u)", printed + 1,
+			XPATH_MAXLEN);
+		return CMD_WARNING_CONFIG_FAILED;
+	}
+
+	nb_cli_enqueue_change(vty, group_xpath, NB_OP_CREATE, NULL);
 
 	return nb_cli_apply_changes(vty, NULL);
 }
@@ -582,7 +591,6 @@ int pim_process_rp_cmd(struct vty *vty, const char *rp_str,
 int pim_process_no_rp_cmd(struct vty *vty, const char *rp_str,
 			  const char *group_str)
 {
-	char group_list_xpath[XPATH_MAXLEN];
 	char group_xpath[XPATH_MAXLEN];
 	char rp_xpath[XPATH_MAXLEN];
 	int printed;
@@ -595,18 +603,8 @@ int pim_process_no_rp_cmd(struct vty *vty, const char *rp_str,
 
 	snprintf(rp_xpath, sizeof(rp_xpath), FRR_PIM_STATIC_RP_XPATH,
 		 "frr-pim:pimd", "pim", vrfname, FRR_PIM_AF_XPATH_VAL, rp_str);
-
-	printed = snprintf(group_list_xpath, sizeof(group_list_xpath),
-			   "%s/group-list", rp_xpath);
-
-	if (printed >= (int)(sizeof(group_list_xpath))) {
-		vty_out(vty, "Xpath too long (%d > %u)", printed + 1,
-			XPATH_MAXLEN);
-		return CMD_WARNING_CONFIG_FAILED;
-	}
-
-	printed = snprintf(group_xpath, sizeof(group_xpath), "%s[.='%s']",
-			   group_list_xpath, group_str);
+	printed = snprintf(group_xpath, sizeof(group_xpath),
+			   "%s/group-list[.='%s']", rp_xpath, group_str);
 
 	if (printed >= (int)(sizeof(group_xpath))) {
 		vty_out(vty, "Xpath too long (%d > %u)", printed + 1,
@@ -623,8 +621,7 @@ int pim_process_no_rp_cmd(struct vty *vty, const char *rp_str,
 	if (yang_is_last_list_dnode(group_dnode))
 		nb_cli_enqueue_change(vty, rp_xpath, NB_OP_DESTROY, NULL);
 	else
-		nb_cli_enqueue_change(vty, group_list_xpath, NB_OP_DESTROY,
-				      group_str);
+		nb_cli_enqueue_change(vty, group_xpath, NB_OP_DESTROY, NULL);
 
 	return nb_cli_apply_changes(vty, NULL);
 }
@@ -1059,8 +1056,8 @@ void pim_show_state(struct pim_instance *pim, struct vty *vty,
 	frr_each (rb_pim_oil, &pim->channel_oil_head, c_oil) {
 		char src_str[PIM_ADDRSTRLEN];
 		char grp_str[PIM_ADDRSTRLEN];
-		char in_ifname[INTERFACE_NAMSIZ + 1];
-		char out_ifname[INTERFACE_NAMSIZ + 1];
+		char in_ifname[IFNAMSIZ + 1];
+		char out_ifname[IFNAMSIZ + 1];
 		int oif_vif_index;
 		struct interface *ifp_in;
 		bool isRpt;
@@ -1078,7 +1075,7 @@ void pim_show_state(struct pim_instance *pim, struct vty *vty,
 			   oil_mcastgrp(c_oil));
 		snprintfrr(src_str, sizeof(src_str), "%pPAs",
 			   oil_origin(c_oil));
-		ifp_in = pim_if_find_by_vif_index(pim, *oil_parent(c_oil));
+		ifp_in = pim_if_find_by_vif_index(pim, *oil_incoming_vif(c_oil));
 
 		if (ifp_in)
 			strlcpy(in_ifname, ifp_in->name, sizeof(in_ifname));
@@ -1148,13 +1145,18 @@ void pim_show_state(struct pim_instance *pim, struct vty *vty,
 						    "wrongInterface",
 						    c_oil->cc.wrong_if);
 			}
-		}
+		} else
 #if PIM_IPV == 4
-		else
 			vty_out(vty, "%-6d %-15pPAs  %-15pPAs  %-3s  %-16s  ",
 				c_oil->installed, oil_origin(c_oil),
 				oil_mcastgrp(c_oil), isRpt ? "y" : "n",
 				in_ifname);
+#else
+			/* Add a new row for c_oil with no OIF */
+			ttable_add_row(tt, "%d|%pPAs|%pPAs|%s|%s|%c",
+				       c_oil->installed, oil_origin(c_oil),
+				       oil_mcastgrp(c_oil), isRpt ? "y" : "n",
+				       in_ifname, ' ');
 #endif
 
 		for (oif_vif_index = 0; oif_vif_index < MAXVIFS;
@@ -1225,6 +1227,13 @@ void pim_show_state(struct pim_instance *pim, struct vty *vty,
 #if PIM_IPV == 4
 					vty_out(vty, "%s%s", out_ifname, flag);
 #else
+					/* OIF found.
+					 * Delete the existing row for c_oil,
+					 * with no OIF.
+					 * Add a new row for c_oil with OIF and
+					 * flag.
+					 */
+					ttable_del_row(tt, tt->nrows - 1);
 					ttable_add_row(
 						tt, "%d|%pPAs|%pPAs|%s|%s|%s%s",
 						c_oil->installed,
@@ -2747,7 +2756,7 @@ void pim_show_interfaces_single(struct pim_instance *pim, struct vty *vty,
 		}
 	}
 
-	if (!found_ifname)
+	if (!found_ifname && !json)
 		vty_out(vty, "%% No such interface\n");
 }
 
@@ -2832,6 +2841,8 @@ static int pim_print_json_pnc_cache_walkcb(struct hash_bucket *backet,
 	json_object *json_row = NULL;
 	json_object *json_ifp = NULL;
 	json_object *json_arr = NULL;
+	struct pim_interface *pim_ifp = NULL;
+	bool pim_enable = false;
 
 	for (nh_node = pnc->nexthop; nh_node; nh_node = nh_node->next) {
 		first_ifindex = nh_node->ifindex;
@@ -2851,6 +2862,14 @@ static int pim_print_json_pnc_cache_walkcb(struct hash_bucket *backet,
 		json_ifp = json_object_new_object();
 		json_object_string_add(json_ifp, "interface",
 				       ifp ? ifp->name : "NULL");
+
+		if (ifp)
+			pim_ifp = ifp->info;
+
+		if (pim_ifp && pim_ifp->pim_enable)
+			pim_enable = true;
+
+		json_object_boolean_add(json_ifp, "pimEnabled", pim_enable);
 #if PIM_IPV == 4
 		json_object_string_addf(json_ifp, "nexthop", "%pI4",
 					&nh_node->gate.ipv4);
@@ -2871,7 +2890,6 @@ int pim_show_nexthop_lookup_cmd_helper(const char *vrf, struct vty *vty,
 	struct prefix grp;
 	struct pim_nexthop nexthop;
 	struct vrf *v;
-	char grp_str[PREFIX_STRLEN];
 
 	v = vrf_lookup_by_name(vrf ? vrf : VRF_DEFAULT_NAME);
 
@@ -2907,9 +2925,7 @@ int pim_show_nexthop_lookup_cmd_helper(const char *vrf, struct vty *vty,
 		return CMD_SUCCESS;
 	}
 
-	pim_addr_dump("<grp?>", &grp, grp_str, sizeof(grp_str));
-
-	vty_out(vty, "Group %s --- Nexthop %pPAs Interface %s\n", grp_str,
+	vty_out(vty, "Group %pFXh --- Nexthop %pPAs Interface %s\n", &grp,
 		&nexthop.mrib_nexthop_addr, nexthop.interface->name);
 
 	return CMD_SUCCESS;
@@ -3200,7 +3216,7 @@ void pim_show_neighbors_single(struct pim_instance *pim, struct vty *vty,
 		}
 	}
 
-	if (!found_neighbor)
+	if (!found_neighbor && !json)
 		vty_out(vty, "%% No such interface or neighbor\n");
 }
 
@@ -3387,6 +3403,8 @@ int pim_process_ssmpingd_cmd(struct vty *vty, enum nb_operation operation,
 {
 	const char *vrfname;
 	char ssmpingd_ip_xpath[XPATH_MAXLEN];
+	char ssmpingd_src_ip_xpath[XPATH_MAXLEN];
+	int printed;
 
 	vrfname = pim_cli_get_vrf_name(vty);
 	if (vrfname == NULL)
@@ -3395,10 +3413,16 @@ int pim_process_ssmpingd_cmd(struct vty *vty, enum nb_operation operation,
 	snprintf(ssmpingd_ip_xpath, sizeof(ssmpingd_ip_xpath),
 		 FRR_PIM_VRF_XPATH, "frr-pim:pimd", "pim", vrfname,
 		 FRR_PIM_AF_XPATH_VAL);
-	strlcat(ssmpingd_ip_xpath, "/ssm-pingd-source-ip",
-		sizeof(ssmpingd_ip_xpath));
+	printed = snprintf(ssmpingd_src_ip_xpath, sizeof(ssmpingd_src_ip_xpath),
+			   "%s/ssm-pingd-source-ip[.='%s']", ssmpingd_ip_xpath,
+			   src_str);
+	if (printed >= (int)sizeof(ssmpingd_src_ip_xpath)) {
+		vty_out(vty, "Xpath too long (%d > %u)", printed + 1,
+			XPATH_MAXLEN);
+		return CMD_WARNING_CONFIG_FAILED;
+	}
 
-	nb_cli_enqueue_change(vty, ssmpingd_ip_xpath, operation, src_str);
+	nb_cli_enqueue_change(vty, ssmpingd_src_ip_xpath, operation, NULL);
 
 	return nb_cli_apply_changes(vty, NULL);
 }
@@ -3643,8 +3667,8 @@ void show_mroute(struct pim_instance *pim, struct vty *vty, pim_sgaddr *sg,
 	int first;
 	char grp_str[PIM_ADDRSTRLEN];
 	char src_str[PIM_ADDRSTRLEN];
-	char in_ifname[INTERFACE_NAMSIZ + 1];
-	char out_ifname[INTERFACE_NAMSIZ + 1];
+	char in_ifname[IFNAMSIZ + 1];
+	char out_ifname[IFNAMSIZ + 1];
 	int oif_vif_index;
 	struct interface *ifp_in;
 	char proto[100];
@@ -3704,7 +3728,7 @@ void show_mroute(struct pim_instance *pim, struct vty *vty, pim_sgaddr *sg,
 		if (pim_channel_oil_empty(c_oil))
 			strlcat(state_str, "P", sizeof(state_str));
 
-		ifp_in = pim_if_find_by_vif_index(pim, *oil_parent(c_oil));
+		ifp_in = pim_if_find_by_vif_index(pim, *oil_incoming_vif(c_oil));
 
 		if (ifp_in)
 			strlcpy(in_ifname, ifp_in->name, sizeof(in_ifname));
@@ -3770,7 +3794,7 @@ void show_mroute(struct pim_instance *pim, struct vty *vty, pim_sgaddr *sg,
 			if (c_oil->oif_flags[oif_vif_index] & PIM_OIF_FLAG_MUTE)
 				continue;
 
-			if (*oil_parent(c_oil) == oif_vif_index &&
+			if (*oil_incoming_vif(c_oil) == oif_vif_index &&
 			    !pim_mroute_allow_iif_in_oil(c_oil, oif_vif_index))
 				continue;
 
@@ -3821,7 +3845,7 @@ void show_mroute(struct pim_instance *pim, struct vty *vty, pim_sgaddr *sg,
 						       "inboundInterface",
 						       in_ifname);
 				json_object_int_add(json_ifp_out, "iVifI",
-						    *oil_parent(c_oil));
+						    *oil_incoming_vif(c_oil));
 				json_object_string_add(json_ifp_out,
 						       "outboundInterface",
 						       out_ifname);
@@ -3970,9 +3994,9 @@ void show_mroute(struct pim_instance *pim, struct vty *vty, pim_sgaddr *sg,
 				json_object_string_add(json_ifp_out,
 						       "inboundInterface",
 						       in_ifname);
-				json_object_int_add(
-					json_ifp_out, "iVifI",
-					*oil_parent(&s_route->c_oil));
+				json_object_int_add(json_ifp_out, "iVifI",
+						    *oil_incoming_vif(
+							    &s_route->c_oil));
 				json_object_string_add(json_ifp_out,
 						       "outboundInterface",
 						       out_ifname);

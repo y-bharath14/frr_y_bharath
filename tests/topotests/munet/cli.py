@@ -93,7 +93,7 @@ def spawn(unet, host, cmd, iow, ns_only):
             elif master_fd in r:
                 o = os.read(master_fd, 10240)
                 if o:
-                    iow.write(o.decode("utf-8"))
+                    iow.write(o.decode("utf-8", "ignore"))
                     iow.flush()
     finally:
         # restore tty settings back
@@ -281,7 +281,6 @@ async def async_input(prompt, histfile):
 
 
 def make_help_str(unet):
-
     w = sorted([x if x else "" for x in unet.cli_in_window_cmds])
     ww = unet.cli_in_window_cmds
     u = sorted([x if x else "" for x in unet.cli_run_cmds])
@@ -326,13 +325,14 @@ def get_shcmd(unet, host, kinds, execfmt, ucmd):
     if not execfmt:
         return ""
 
-    # Do substitutions for {} in string
+    # Do substitutions for {} and {N} in string
     numfmt = len(re.findall(r"{\d*}", execfmt))
     if numfmt > 1:
         ucmd = execfmt.format(*shlex.split(ucmd))
     elif numfmt:
         ucmd = execfmt.format(ucmd)
-    elif len(re.findall(r"{[a-zA-Z_][0-9a-zA-Z_\.]*}", execfmt)):
+    # look for any pair of {}s but do not count escaped {{ or }}
+    elif len(re.findall(r"{[^}]+}", execfmt.replace("{{", "").replace("}}", ""))):
         if execfmt.endswith('"'):
             fstring = "f'''" + execfmt + "'''"
         else:
@@ -516,7 +516,6 @@ class Completer:
 async def doline(
     unet, line, outf, background=False, notty=False
 ):  # pylint: disable=R0911
-
     line = line.strip()
     m = re.fullmatch(r"^(\S+)(?:\s+(.*))?$", line)
     if not m:
@@ -670,7 +669,7 @@ async def cli_client(sockpath, prompt="munet> "):
         rb = rb[: -len(ENDMARKER)]
 
         # Write the output
-        sys.stdout.write(rb.decode("utf-8"))
+        sys.stdout.write(rb.decode("utf-8", "ignore"))
 
 
 async def local_cli(unet, outf, prompt, histfile, background):
@@ -729,7 +728,7 @@ async def cli_client_connected(unet, background, reader, writer):
                 self.writer = writer
 
             def write(self, x):
-                self.writer.write(x.encode("utf-8"))
+                self.writer.write(x.encode("utf-8", "ignore"))
 
             def flush(self):
                 self.writer.flush()

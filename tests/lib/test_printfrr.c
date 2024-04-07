@@ -143,6 +143,8 @@ int main(int argc, char **argv)
 		NAN,
 	};
 	uint64_t ui64 = 0xfeed1278cafef00d;
+	uint16_t i16 = -23456;
+	int_fast8_t if8 = 123;
 	struct in_addr ip;
 	char *p;
 	char buf[256];
@@ -165,6 +167,19 @@ int main(int argc, char **argv)
 
 	printchk("-77385308584349683 18369358765125201933 feed1278cafef00d",
 		 "%Ld %Lu %Lx", ui64, ui64, ui64);
+
+	FMT_NSTD(printchk("11110000000011111010010111000011", "%b", 0xf00fa5c3));
+	FMT_NSTD(printchk("0b01011010", "%#010b", 0x5a));
+
+/* FMT_NSTD is conditional on the frr-format plugin being NOT enabled.
+ * However, the frr-format plugin does not support %wd/%wfd yet, so this needs
+ * to be unconditional.
+ */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat"
+	printchk("123 -23456 feed1278cafef00d 9876", "%wf8d %w16d %w64x %d",
+		 if8, i16, ui64, 9876);
+#pragma GCC diagnostic pop
 
 	inet_aton("192.168.1.2", &ip);
 	printchk("192.168.1.2", "%pI4", &ip);

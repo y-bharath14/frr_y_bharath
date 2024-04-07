@@ -185,9 +185,11 @@ Route Map Match Command
 
    Matches the specified `local-preference`.
 
-.. clicmd:: match community COMMUNITY_LIST
+.. clicmd:: match community COMMUNITY_LIST [<exact-match|any>]
 
-   Matches the specified  `community_list`
+   Matches the specified  `community_list`. ``exact-match`` specifies to
+   do the exact matching of the communities, while ``any`` - can match any
+   community specified in COMMUNITY_LIST.
 
 .. clicmd:: match peer IPV4_ADDR
 
@@ -212,7 +214,7 @@ Route Map Match Command
 
 .. clicmd:: match source-protocol PROTOCOL_NAME
 
-  This is a ZEBRA specific match command.  Matches the
+  This is a ZEBRA and BGP specific match command.  Matches the
   originating protocol specified.
 
 .. clicmd:: match source-instance NUMBER
@@ -335,6 +337,10 @@ Route Map Set Command
 
    Set the BGP community attribute.
 
+.. clicmd:: set extended-comm-list <EXTCOMMUNITY_LIST_NAME> delete
+
+   Set BGP extended community list for deletion.
+
 .. clicmd:: set ipv6 next-hop local IPV6_ADDRESS
 
    Set the BGP-4+ link local IPv6 nexthop address.
@@ -374,13 +380,13 @@ Route Map Exit Action Command
 
 .. clicmd:: on-match next
 
-.. clicmd:: continue
-
    Proceed on to the next entry in the route-map.
 
-.. clicmd:: on-match goto N
+.. clicmd:: continue (1-65535)
 
-.. clicmd:: continue N
+   Proceed to the specified sequence in the route-map.
+
+.. clicmd:: on-match goto N
 
    Proceed processing the route-map at the first entry whose order is >= N
 

@@ -145,7 +145,7 @@ extern void bgp_config_write_wpkt_quanta(struct vty *vty, struct bgp *bgp);
 extern void bgp_config_write_rpkt_quanta(struct vty *vty, struct bgp *bgp);
 extern void bgp_config_write_listen(struct vty *vty, struct bgp *bgp);
 extern void bgp_config_write_coalesce_time(struct vty *vty, struct bgp *bgp);
-extern int bgp_vty_return(struct vty *vty, int ret);
+extern int bgp_vty_return(struct vty *vty, enum bgp_create_error_code ret);
 extern bool bgp_config_inprocess(void);
 extern struct peer *peer_and_group_lookup_vty(struct vty *vty,
 					      const char *peer_str);
@@ -171,5 +171,7 @@ extern int bgp_show_summary_vty(struct vty *vty, const char *name, afi_t afi,
 				safi_t safi, const char *neighbor, int as_type,
 				as_t as, uint16_t show_flags);
 extern bool peergroup_flag_check(struct peer *peer, uint64_t flag);
+extern bool peergroup_af_flag_check(struct peer *peer, afi_t afi, safi_t safi,
+				    uint64_t flag);
 
 #endif /* _QUAGGA_BGP_VTY_H */

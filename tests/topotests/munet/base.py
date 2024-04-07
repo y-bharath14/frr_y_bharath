@@ -21,7 +21,6 @@ import subprocess
 import sys
 import tempfile
 import time as time_mod
-
 from collections import defaultdict
 from pathlib import Path
 from typing import Union
@@ -29,10 +28,8 @@ from typing import Union
 from . import config as munet_config
 from . import linux
 
-
 try:
     import pexpect
-
     from pexpect.fdpexpect import fdspawn
     from pexpect.popen_spawn import PopenSpawn
 
@@ -45,6 +42,9 @@ PEXPECT_CONTINUATION_PROMPT = "PEXPECT_PROMPT+"
 
 root_hostname = subprocess.check_output("hostname")
 our_pid = os.getpid()
+
+
+detailed_cmd_logging = False
 
 
 class MunetError(Exception):
@@ -116,6 +116,27 @@ def cmd_error(rc, o, e):
     s = f"rc {rc}"
     o = "\n\tstdout: " + o.strip() if o and o.strip() else ""
     e = "\n\tstderr: " + e.strip() if e and e.strip() else ""
+    return s + o + e
+
+
+def shorten(s):
+    s = s.strip()
+    i = s.find("\n")
+    if i > 0:
+        s = s[: i - 1]
+        if not s.endswith("..."):
+            s += "..."
+    if len(s) > 72:
+        s = s[:69]
+        if not s.endswith("..."):
+            s += "..."
+    return s
+
+
+def comm_result(rc, o, e):
+    s = f"\n\treturncode {rc}" if rc else ""
+    o = "\n\tstdout: " + shorten(o) if o and o.strip() else ""
+    e = "\n\tstderr: " + shorten(e) if e and e.strip() else ""
     return s + o + e
 
 
@@ -477,16 +498,26 @@ class Commander:  # pylint: disable=R0904
                 defaults["preexec_fn"] = os.setsid
             defaults["env"]["PS1"] = "$ "
 
-        self.logger.debug(
-            '%s: %s %s("%s", pre_cmd: "%s" use_pty: %s kwargs: %.120s)',
-            self,
-            "XXX" if method == "_spawn" else "",
-            method,
-            cmd_list,
-            pre_cmd_list if not skip_pre_cmd else "",
-            use_pty,
-            defaults,
-        )
+        if not detailed_cmd_logging:
+            pre_cmd_str = shlex.join(pre_cmd_list) if not skip_pre_cmd else ""
+            if "nsenter" in pre_cmd_str:
+                self.logger.debug('%s("%s")', method, shlex.join(cmd_list))
+            elif pre_cmd_str:
+                self.logger.debug(
+                    '%s("%s") [precmd: %s]', method, shlex.join(cmd_list), pre_cmd_str
+                )
+            else:
+                self.logger.debug('%s("%s") [no precmd]', method, shlex.join(cmd_list))
+        else:
+            self.logger.debug(
+                '%s: %s("%s", pre_cmd: "%s" use_pty: %s kwargs: %.120s)',
+                self,
+                method,
+                cmd_list,
+                pre_cmd_list if not skip_pre_cmd else "",
+                use_pty,
+                defaults,
+            )
 
         actual_cmd_list = cmd_list if skip_pre_cmd else pre_cmd_list + cmd_list
         return actual_cmd_list, defaults
@@ -531,7 +562,7 @@ class Commander:  # pylint: disable=R0904
 
     def _spawn(self, cmd, skip_pre_cmd=False, use_pty=False, echo=False, **kwargs):
         logging.debug(
-            '%s: XXX _spawn: cmd "%s" skip_pre_cmd %s use_pty %s echo %s kwargs %s',
+            '%s: _spawn: cmd "%s" skip_pre_cmd %s use_pty %s echo %s kwargs %s',
             self,
             cmd,
             skip_pre_cmd,
@@ -544,7 +575,7 @@ class Commander:  # pylint: disable=R0904
         )
 
         self.logger.debug(
-            '%s: XXX %s("%s", use_pty %s echo %s defaults: %s)',
+            '%s: %s("%s", use_pty %s echo %s defaults: %s)',
             self,
             "PopenSpawn" if not use_pty else "pexpect.spawn",
             actual_cmd,
@@ -830,14 +861,18 @@ class Commander:  # pylint: disable=R0904
             else:
                 o, e = await p.communicate()
             self.logger.debug(
-                "%s: cmd_p already exited status: %s", self, proc_error(p, o, e)
+                "%s: [cleanup_proc] proc already exited status: %s",
+                self,
+                proc_error(p, o, e),
             )
             return None
 
         if pid is None:
             pid = p.pid
 
-        self.logger.debug("%s: terminate process: %s (pid %s)", self, proc_str(p), pid)
+        self.logger.debug(
+            "%s: [cleanup_proc] terminate process: %s (pid %s)", self, proc_str(p), pid
+        )
         try:
             # This will SIGHUP and wait a while then SIGKILL and return immediately
             await self.cleanup_pid(p.pid, pid)
@@ -850,14 +885,19 @@ class Commander:  # pylint: disable=R0904
             else:
                 o, e = await asyncio.wait_for(p.communicate(), timeout=wait_secs)
             self.logger.debug(
-                "%s: cmd_p exited after kill, status: %s", self, proc_error(p, o, e)
+                "%s: [cleanup_proc] exited after kill, status: %s",
+                self,
+                proc_error(p, o, e),
             )
         except (asyncio.TimeoutError, subprocess.TimeoutExpired):
-            self.logger.warning("%s: SIGKILL timeout", self)
+            self.logger.warning("%s: [cleanup_proc] SIGKILL timeout", self)
             return p
         except Exception as error:
             self.logger.warning(
-                "%s: kill unexpected exception: %s", self, error, exc_info=True
+                "%s: [cleanup_proc] kill unexpected exception: %s",
+                self,
+                error,
+                exc_info=True,
             )
             return p
         return None
@@ -873,7 +913,11 @@ class Commander:  # pylint: disable=R0904
     def _cmd_status_finish(self, p, c, ac, o, e, raises, warn):
         rc = p.returncode
         self.last = (rc, ac, c, o, e)
-        if rc:
+        if not rc:
+            resstr = comm_result(rc, o, e)
+            if resstr:
+                self.logger.debug("%s", resstr)
+        else:
             if warn:
                 self.logger.warning("%s: proc failed: %s", self, proc_error(p, o, e))
             if raises:
@@ -1167,7 +1211,7 @@ class Commander:  # pylint: disable=R0904
         # XXX need to test ssh in Xterm
         sudo_path = get_exec_path_host(["sudo"])
         # This first test case seems same as last but using list instead of string?
-        if self.is_vm and self.use_ssh:  # pylint: disable=E1101
+        if self.is_vm and self.use_ssh and not ns_only:  # pylint: disable=E1101
             if isinstance(cmd, str):
                 cmd = shlex.split(cmd)
             cmd = ["/usr/bin/env", f"MUNET_NODENAME={self.name}"] + cmd
@@ -1187,8 +1231,14 @@ class Commander:  # pylint: disable=R0904
         else:
             # This is the command to execute to be inside the namespace.
             # We are getting into trouble with quoting.
-            # Why aren't we passing in MUNET_RUNDIR?
-            cmd = f"/usr/bin/env MUNET_NODENAME={self.name} {cmd}"
+            envvars = f"MUNET_NODENAME={self.name} NODENAME={self.name}"
+            if hasattr(self, "rundir"):
+                envvars += f" RUNDIR={self.rundir}"
+            if hasattr(self.unet, "config_dirname") and self.unet.config_dirname:
+                envvars += f" CONFIGDIR={self.unet.config_dirname}"
+            elif "CONFIGDIR" in os.environ:
+                envvars += f" CONFIGDIR={os.environ['CONFIGDIR']}"
+            cmd = f"/usr/bin/env {envvars} {cmd}"
             # We need sudo b/c we are executing as the user inside the window system.
             sudo_path = get_exec_path_host(["sudo"])
             nscmd = (
@@ -1241,9 +1291,13 @@ class Commander:  # pylint: disable=R0904
                 # XXX not appropriate for ssh
                 cmd = ["sudo", "-Eu", os.environ["SUDO_USER"]] + cmd
 
-            if not isinstance(nscmd, str):
-                nscmd = shlex.join(nscmd)
-            cmd.append(nscmd)
+            if title:
+                cmd.append("-t")
+                cmd.append(title)
+
+            if isinstance(nscmd, str):
+                nscmd = shlex.split(nscmd)
+            cmd.extend(nscmd)
         elif "DISPLAY" in os.environ:
             cmd = [get_exec_path_host("xterm")]
             if "SUDO_USER" in os.environ:
@@ -1289,6 +1343,14 @@ class Commander:  # pylint: disable=R0904
 
         # Re-adjust the layout
         if "TMUX" in os.environ:
+            cmd = [
+                get_exec_path_host("tmux"),
+                "select-layout",
+                "-t",
+                pane_info if not tmux_target else tmux_target,
+                "even-horizontal",
+            ]
+            commander.cmd_status(cmd)
             cmd = [
                 get_exec_path_host("tmux"),
                 "select-layout",
@@ -1872,18 +1934,19 @@ class LinuxNamespace(Commander, InterfaceMixin):
             assert unet is None
             self.uflags = uflags
             #
-            # Open file descriptors for current namespaces for later resotration.
+            # Open file descriptors for current namespaces for later restoration.
             #
             try:
+                # pidfd_open is actually present in 5.4, is this 5.8 check for another
+                # aspect of what the pidfd_open code is relying on, something in the
+                # namespace code? If not we can simply check for os.pidfd_open() being
+                # present as our compat module linux.py runtime patches it in if
+                # supported by the kernel.
                 kversion = [int(x) for x in platform.release().split("-")[0].split(".")]
                 kvok = kversion[0] > 5 or (kversion[0] == 5 and kversion[1] >= 8)
             except ValueError:
                 kvok = False
-            if (
-                not kvok
-                or sys.version_info[0] < 3
-                or (sys.version_info[0] == 3 and sys.version_info[1] < 9)
-            ):
+            if not kvok:
                 # get list of namespace file descriptors before we unshare
                 self.p_ns_fds = []
                 self.p_ns_fnames = []
@@ -1962,8 +2025,10 @@ class LinuxNamespace(Commander, InterfaceMixin):
                 stdout=stdout,
                 stderr=stderr,
                 text=True,
-                start_new_session=not unet,
                 shell=False,
+                # start_new_session=not unet
+                # preexec_fn=os.setsid if not unet else None,
+                preexec_fn=os.setsid,
             )
 
             # The pid number returned is in the global pid namespace. For unshare_inline
@@ -2302,14 +2367,14 @@ class LinuxNamespace(Commander, InterfaceMixin):
             and self.pid != our_pid
         ):
             self.logger.debug(
-                "cleanup pid on separate pid %s from proc pid %s",
+                "cleanup separate pid %s from namespace proc pid %s",
                 self.pid,
                 self.p.pid if self.p else None,
             )
             await self.cleanup_pid(self.pid)
 
         if self.p is not None:
-            self.logger.debug("cleanup proc pid %s", self.p.pid)
+            self.logger.debug("cleanup namespace proc pid %s", self.p.pid)
             await self.async_cleanup_proc(self.p)
 
         # return to the previous namespace, need to do this in case anothe munet
@@ -2894,7 +2959,7 @@ if True:  # pylint: disable=using-constant-test
             )
 
             logging.debug(
-                'ShellWraper: XXX prompt "%s" will_echo %s child.echo %s',
+                'ShellWraper: prompt "%s" will_echo %s child.echo %s',
                 prompt,
                 will_echo,
                 spawn.echo,

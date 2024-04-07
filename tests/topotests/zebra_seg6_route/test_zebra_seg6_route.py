@@ -59,11 +59,11 @@ def teardown_module(_mod):
     tgen.stop_topology()
 
 
-def test_zebra_seg6local_routes():
+def test_zebra_seg6_routes():
     tgen = get_topogen()
     if tgen.routers_have_failure():
         pytest.skip(tgen.errors)
-    logger.info("Test for seg6local route install via ZAPI was start.")
+    logger.info("Test for seg6 route install via ZAPI was start.")
     r1 = tgen.gears["r1"]
 
     def check(router, dest, expected):
@@ -86,7 +86,7 @@ def test_zebra_seg6local_routes():
         )
         logger.info("CHECK {} {} {}".format(dest, nh, sid))
         test_func = partial(check, r1, dest, manifest["out"])
-        success, result = topotest.run_and_expect(test_func, None, count=5, wait=1)
+        success, result = topotest.run_and_expect(test_func, None, count=20, wait=1)
         assert result is None, "Failed"
 
 
