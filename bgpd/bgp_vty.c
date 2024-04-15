@@ -5202,8 +5202,7 @@ DEFUN (no_neighbor_peer_group,
 		for (afi = AFI_IP; afi < AFI_MAX; afi++) {
 			int lr_count = listcount(group->listen_range[afi]);
 			if (lr_count) {
-				vty_out(vty, "%% Cannot delete peer-group. Currently attached to %d listen-range(s). Delete listen-range(s) first\n",
-					lr_count);
+				vty_out(vty, "%%Peer-group %s is attached to %d listen-range(s), delete them first\n", group->name, lr_count);
 				return CMD_WARNING_CONFIG_FAILED;
 				}
 			}
