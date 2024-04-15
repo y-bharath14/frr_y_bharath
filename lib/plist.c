@@ -1073,17 +1073,13 @@ static int vty_show_prefix_list(struct vty *vty, afi_t afi, const char *name,
 	struct prefix_master *master;
 	int64_t seqnum = 0;
 	json_object *json = NULL;
-	json_object *json_proto = NULL;
 
 	master = prefix_master_get(afi, 0);
 	if (master == NULL)
 		return CMD_WARNING;
 
-	if (uj) {
+	if (uj)
 		json = json_object_new_object();
-		json_proto = json_object_new_object();
-		json_object_object_add(json, frr_protoname, json_proto);
-	}
 
 	if (seq)
 		seqnum = (int64_t)atol(seq);
@@ -1096,8 +1092,8 @@ static int vty_show_prefix_list(struct vty *vty, afi_t afi, const char *name,
 					"%% Can't find specified prefix-list\n");
 			return CMD_WARNING;
 		}
-		vty_show_prefix_entry(vty, json_proto, afi, plist, master,
-				      dtype, seqnum);
+		vty_show_prefix_entry(vty, json, afi, plist, master, dtype,
+				      seqnum);
 	} else {
 		if (dtype == detail_display || dtype == summary_display) {
 			if (master->recent && !uj)
@@ -1107,8 +1103,8 @@ static int vty_show_prefix_list(struct vty *vty, afi_t afi, const char *name,
 		}
 
 		frr_each (plist, &master->str, plist)
-			vty_show_prefix_entry(vty, json_proto, afi, plist,
-					      master, dtype, seqnum);
+			vty_show_prefix_entry(vty, json, afi, plist, master,
+					      dtype, seqnum);
 	}
 
 	return vty_json(vty, json);
@@ -1227,16 +1223,12 @@ static int vty_clear_prefix_list(struct vty *vty, afi_t afi, const char *name,
 
 #include "lib/plist_clippy.c"
 
-DEFPY (show_ip_prefix_list,
-       show_ip_prefix_list_cmd,
-       "show ip prefix-list [PREFIXLIST4_NAME$name [seq$dseq (1-4294967295)$arg]] [json$uj]",
-       SHOW_STR
-       IP_STR
-       PREFIX_LIST_STR
-       "Name of a prefix list\n"
-       "sequence number of an entry\n"
-       "Sequence number\n"
-       JSON_STR)
+DEFPY_NOSH(
+	show_ip_prefix_list, show_ip_prefix_list_cmd,
+	"show ip prefix-list [PREFIXLIST4_NAME$name [seq$dseq (1-4294967295)$arg]] [json$uj]",
+	SHOW_STR IP_STR PREFIX_LIST_STR "Name of a prefix list\n"
+					"sequence number of an entry\n"
+					"Sequence number\n" JSON_STR)
 {
 	enum display_type dtype = normal_display;
 	if (dseq)
@@ -1246,16 +1238,14 @@ DEFPY (show_ip_prefix_list,
 				    !!uj);
 }
 
-DEFPY (show_ip_prefix_list_prefix,
-       show_ip_prefix_list_prefix_cmd,
-       "show ip prefix-list PREFIXLIST4_NAME$name A.B.C.D/M$prefix [longer$dl|first-match$dfm]",
-       SHOW_STR
-       IP_STR
-       PREFIX_LIST_STR
-       "Name of a prefix list\n"
-       "IP prefix <network>/<length>, e.g., 35.0.0.0/8\n"
-       "Lookup longer prefix\n"
-       "First matched prefix\n")
+DEFPY_NOSH(
+	show_ip_prefix_list_prefix, show_ip_prefix_list_prefix_cmd,
+	"show ip prefix-list PREFIXLIST4_NAME$name A.B.C.D/M$prefix [longer$dl|first-match$dfm]",
+	SHOW_STR IP_STR PREFIX_LIST_STR
+	"Name of a prefix list\n"
+	"IP prefix <network>/<length>, e.g., 35.0.0.0/8\n"
+	"Lookup longer prefix\n"
+	"First matched prefix\n")
 {
 	enum display_type dtype = normal_display;
 	if (dl)
@@ -1267,29 +1257,19 @@ DEFPY (show_ip_prefix_list_prefix,
 					   dtype);
 }
 
-DEFPY (show_ip_prefix_list_summary,
-       show_ip_prefix_list_summary_cmd,
-       "show ip prefix-list summary [PREFIXLIST4_NAME$name] [json$uj]",
-       SHOW_STR
-       IP_STR
-       PREFIX_LIST_STR
-       "Summary of prefix lists\n"
-       "Name of a prefix list\n"
-       JSON_STR)
+DEFPY_NOSH(show_ip_prefix_list_summary, show_ip_prefix_list_summary_cmd,
+	   "show ip prefix-list summary [PREFIXLIST4_NAME$name] [json$uj]",
+	   SHOW_STR IP_STR PREFIX_LIST_STR "Summary of prefix lists\n"
+					   "Name of a prefix list\n" JSON_STR)
 {
 	return vty_show_prefix_list(vty, AFI_IP, name, NULL,
 				    summary_display, !!uj);
 }
 
-DEFPY (show_ip_prefix_list_detail,
-       show_ip_prefix_list_detail_cmd,
-       "show ip prefix-list detail [PREFIXLIST4_NAME$name] [json$uj]",
-       SHOW_STR
-       IP_STR
-       PREFIX_LIST_STR
-       "Detail of prefix lists\n"
-       "Name of a prefix list\n"
-       JSON_STR)
+DEFPY_NOSH(show_ip_prefix_list_detail, show_ip_prefix_list_detail_cmd,
+	   "show ip prefix-list detail [PREFIXLIST4_NAME$name] [json$uj]",
+	   SHOW_STR IP_STR PREFIX_LIST_STR "Detail of prefix lists\n"
+					   "Name of a prefix list\n" JSON_STR)
 {
 	return vty_show_prefix_list(vty, AFI_IP, name, NULL,
 				    detail_display, !!uj);
@@ -1307,16 +1287,12 @@ DEFPY (clear_ip_prefix_list,
 	return vty_clear_prefix_list(vty, AFI_IP, name, prefix_str);
 }
 
-DEFPY (show_ipv6_prefix_list,
-       show_ipv6_prefix_list_cmd,
-       "show ipv6 prefix-list [PREFIXLIST6_NAME$name [seq$dseq (1-4294967295)$arg]] [json$uj]",
-       SHOW_STR
-       IPV6_STR
-       PREFIX_LIST_STR
-       "Name of a prefix list\n"
-       "sequence number of an entry\n"
-       "Sequence number\n"
-       JSON_STR)
+DEFPY_NOSH(
+	show_ipv6_prefix_list, show_ipv6_prefix_list_cmd,
+	"show ipv6 prefix-list [PREFIXLIST6_NAME$name [seq$dseq (1-4294967295)$arg]] [json$uj]",
+	SHOW_STR IPV6_STR PREFIX_LIST_STR "Name of a prefix list\n"
+					  "sequence number of an entry\n"
+					  "Sequence number\n" JSON_STR)
 {
 	enum display_type dtype = normal_display;
 	if (dseq)
@@ -1347,29 +1323,19 @@ DEFPY (show_ipv6_prefix_list_prefix,
 					   prefix_str, dtype);
 }
 
-DEFPY (show_ipv6_prefix_list_summary,
-       show_ipv6_prefix_list_summary_cmd,
-       "show ipv6 prefix-list summary [PREFIXLIST6_NAME$name] [json$uj]",
-       SHOW_STR
-       IPV6_STR
-       PREFIX_LIST_STR
-       "Summary of prefix lists\n"
-       "Name of a prefix list\n"
-       JSON_STR)
+DEFPY_NOSH(show_ipv6_prefix_list_summary, show_ipv6_prefix_list_summary_cmd,
+	   "show ipv6 prefix-list summary [PREFIXLIST6_NAME$name] [json$uj]",
+	   SHOW_STR IPV6_STR PREFIX_LIST_STR "Summary of prefix lists\n"
+					     "Name of a prefix list\n" JSON_STR)
 {
 	return vty_show_prefix_list(vty, AFI_IP6, name, NULL,
 				    summary_display, !!uj);
 }
 
-DEFPY (show_ipv6_prefix_list_detail,
-       show_ipv6_prefix_list_detail_cmd,
-       "show ipv6 prefix-list detail [PREFIXLIST6_NAME$name] [json$uj]",
-       SHOW_STR
-       IPV6_STR
-       PREFIX_LIST_STR
-       "Detail of prefix lists\n"
-       "Name of a prefix list\n"
-       JSON_STR)
+DEFPY_NOSH(show_ipv6_prefix_list_detail, show_ipv6_prefix_list_detail_cmd,
+	   "show ipv6 prefix-list detail [PREFIXLIST6_NAME$name] [json$uj]",
+	   SHOW_STR IPV6_STR PREFIX_LIST_STR "Detail of prefix lists\n"
+					     "Name of a prefix list\n" JSON_STR)
 {
 	return vty_show_prefix_list(vty, AFI_IP6, name, NULL,
 				    detail_display, !!uj);
