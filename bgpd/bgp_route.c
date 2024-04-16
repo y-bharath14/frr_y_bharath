@@ -6646,8 +6646,6 @@ static void bgp_static_free(struct bgp_static *bgp_static)
 	XFREE(MTYPE_ROUTE_MAP_NAME, bgp_static->rmap.name);
 	route_map_counter_decrement(bgp_static->rmap.map);
 
-	if (bgp_static->prd_pretty)
-		XFREE(MTYPE_BGP_NAME, bgp_static->prd_pretty);
 	XFREE(MTYPE_ATTR, bgp_static->eth_s_id);
 	XFREE(MTYPE_BGP_STATIC, bgp_static);
 }
@@ -15965,8 +15963,7 @@ static void bgp_config_write_network_vpn(struct vty *vty, struct bgp *bgp,
 			/* "network" configuration display.  */
 			label = decode_label(&bgp_static->label);
 
-			vty_out(vty, "  network %pFX rd %s", p,
-				bgp_static->prd_pretty);
+			vty_out(vty, "  network %pFX rd %pRDP", p, &bgp_static->prd);
 			if (safi == SAFI_MPLS_VPN)
 				vty_out(vty, " label %u", label);
 
@@ -16042,8 +16039,8 @@ static void bgp_config_write_network_evpn(struct vty *vty, struct bgp *bgp,
 					  &bgp_static->gatewayIp.u.prefix, buf2,
 					  sizeof(buf2));
 			vty_out(vty,
-				"  network %s rd %s ethtag %u label %u esi %s gwip %s routermac %s\n",
-				buf, bgp_static->prd_pretty,
+				"  network %s rd %pRDP ethtag %u label %u esi %s gwip %s routermac %s\n",
+				buf, &bgp_static->prd,
 				p->u.prefix_evpn.prefix_addr.eth_tag,
 				decode_label(&bgp_static->label), esi_buf, buf2,
 				macrouter);
