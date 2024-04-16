@@ -76,7 +76,6 @@ struct bgpevpn {
 
 	/* RD for this VNI. */
 	struct prefix_rd prd;
-	char *prd_pretty;
 
 	/* Route type 3 field */
 	struct in_addr originator_ip;
