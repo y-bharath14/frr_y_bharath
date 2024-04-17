@@ -2343,7 +2343,6 @@ static void evpn_configure_rd(struct bgp *bgp, struct bgpevpn *vpn,
 
 	/* update RD */
 	memcpy(&vpn->prd, rd, sizeof(struct prefix_rd));
-	vpn->prd_pretty = XSTRDUP(MTYPE_BGP_NAME, rd_pretty);
 	SET_FLAG(vpn->flags, VNI_FLAG_RD_CFGD);
 
 	if (is_vni_live(vpn))
@@ -3563,7 +3562,7 @@ static void write_vni_config(struct vty *vty, struct bgpevpn *vpn)
 	if (is_vni_configured(vpn)) {
 		vty_out(vty, "  vni %u\n", vpn->vni);
 		if (is_rd_configured(vpn))
-			vty_out(vty, "   rd %s\n", vpn->prd_pretty);
+			vty_out(vty, "   rd %pRDP\n", &vpn->prd);
 
 		if (is_import_rt_configured(vpn)) {
 			for (ALL_LIST_ELEMENTS(vpn->import_rtl, node, nnode,
